@@ -731,47 +731,98 @@ function renderSignal(data) {
 // INVESTOR SCORES  (Warren Buffett + Rakesh Jhunjhunwala)
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderInvestorScores(data) {
-  const { buffett, jhunjhunwala, metrics } = data.analysis.investorScores;
+  const scores = data.analysis.investorScores;
   const el = document.getElementById('investorScores');
-  if (!el) return;
+  if (!el || !scores) return;
 
-  const scoreCard = ({ name, icon, score, rating, quote, positive, negative, colorVar, accentClass }) => `
-    <div class="investor-card ${accentClass}">
-      <div class="investor-card-header">
-        <div class="investor-icon">${icon}</div>
+  const { consensus, metrics } = scores;
+
+  // Legend: all 11 investors with icon + philosophy
+  const LEGENDS = [
+    { key: 'graham',        icon: '📚', name: 'Benjamin Graham',      philosophy: 'Deep Value · Margin of Safety' },
+    { key: 'buffett',       icon: '🏦', name: 'Warren Buffett',        philosophy: 'Value · Safety · Moat' },
+    { key: 'lynch',         icon: '🔍', name: 'Peter Lynch',           philosophy: 'GARP · Ten-Bagger · Growth' },
+    { key: 'bogle',         icon: '📊', name: 'John Bogle',            philosophy: 'Index · Low Cost · Long-Term' },
+    { key: 'malkiel',       icon: '🎲', name: 'Burton Malkiel',        philosophy: 'Efficient Market · Random Walk' },
+    { key: 'munger',        icon: '🧠', name: 'Charlie Munger',        philosophy: 'Quality Moat · Mental Models' },
+    { key: 'soros',         icon: '🌊', name: 'George Soros',          philosophy: 'Reflexivity · Macro Momentum' },
+    { key: 'druckenmiller', icon: '⚡', name: 'Stanley Druckenmiller', philosophy: 'Top-Down · High Conviction' },
+    { key: 'icahn',         icon: '🦅', name: 'Carl Icahn',            philosophy: 'Activist · Undervalued Assets' },
+    { key: 'dalio',         icon: '⚖️', name: 'Ray Dalio',             philosophy: 'All-Weather · Risk Parity' },
+    { key: 'jhunjhunwala',  icon: '🇮🇳', name: 'Rakesh Jhunjhunwala',  philosophy: 'India Growth · Momentum' },
+  ];
+
+  const tierClass = (score) =>
+    score >= 75 ? 'tier-great' : score >= 55 ? 'tier-good' : score >= 38 ? 'tier-hold' : score >= 22 ? 'tier-watch' : 'tier-avoid';
+
+  const legendCard = ({ key, icon, name, philosophy }) => {
+    const inv = scores[key];
+    if (!inv) return '';
+    const tier = tierClass(inv.score);
+    const ratingColor = SCORE_RATING_COLOR[inv.rating] || 'var(--primary)';
+    const pts = [
+      ...inv.positive.slice(0, 2).map(p => `<div class="inv-point bullish"><span class="inv-dot"></span>${p}</div>`),
+      ...inv.negative.slice(0, 1).map(p => `<div class="inv-point bearish"><span class="inv-dot"></span>${p}</div>`),
+    ].join('');
+    return `
+      <div class="legend-card">
+        <div class="legend-card-top">
+          <div class="legend-card-icon">${icon}</div>
+          <div style="flex:1;min-width:0">
+            <div class="legend-card-name">${name}</div>
+            <div class="legend-card-philosophy">${philosophy}</div>
+          </div>
+          <div class="legend-score-badge ${tier}">${inv.score}</div>
+        </div>
+        <div class="legend-rating-chip" style="color:${ratingColor}">${inv.rating}</div>
+        <div class="legend-points">${pts}</div>
+        <div class="legend-quote">"${inv.quote}"</div>
+      </div>`;
+  };
+
+  // Consensus bar
+  const pct = Math.round((consensus.buyCount / consensus.totalInvestors) * 100);
+  const consensusRatingClass = consensus.score >= 65 ? 'buy' : consensus.score >= 38 ? 'hold' : 'sell';
+  const consensusHtml = `
+    <div class="legend-consensus-bar">
+      <div class="consensus-left">
+        <div class="consensus-icon">🏛️</div>
         <div>
-          <div class="investor-name">${name}</div>
-          <div class="investor-philosophy">${name === 'Warren Buffett' ? 'Value · Safety · Moat' : 'Growth · Momentum · India'}</div>
-        </div>
-        <div class="investor-score-circle" style="--score-color:${colorVar}">
-          <svg viewBox="0 0 36 36" class="score-ring">
-            <path class="score-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
-            <path class="score-ring-fill" stroke="${colorVar}"
-              stroke-dasharray="${score}, 100"
-              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
-          </svg>
-          <div class="score-number">${score}</div>
+          <div class="consensus-label">CONSENSUS VERDICT</div>
+          <div class="consensus-rating ${consensusRatingClass}">${consensus.rating}</div>
         </div>
       </div>
-      <div class="investor-rating" style="color:${SCORE_RATING_COLOR[rating] || 'var(--cyan)'}">
-        ${rating}
-      </div>
-      <div class="investor-quote">${quote}</div>
-      <div class="investor-points">
-        ${positive.map(p => `<div class="inv-point bullish"><span class="inv-dot"></span>${p}</div>`).join('')}
-        ${negative.map(p => `<div class="inv-point bearish"><span class="inv-dot"></span>${p}</div>`).join('')}
+      <div class="consensus-right">
+        <div class="consensus-stat">
+          <div class="consensus-stat-val" style="color:var(--green)">${consensus.buyCount}</div>
+          <div class="consensus-stat-lab">Buy votes</div>
+        </div>
+        <div class="consensus-stat">
+          <div class="consensus-stat-val">${consensus.totalInvestors - consensus.buyCount}</div>
+          <div class="consensus-stat-lab">Hold/Avoid</div>
+        </div>
+        <div class="consensus-stat">
+          <div class="consensus-stat-val">${consensus.score}</div>
+          <div class="consensus-stat-lab">Avg Score</div>
+        </div>
+        <div>
+          <div class="consensus-buy-bar">
+            <div class="consensus-buy-fill" style="width:${pct}%"></div>
+          </div>
+          <div style="font-size:.68rem;color:var(--text-muted);margin-top:4px;text-align:right">${pct}% bullish</div>
+        </div>
       </div>
     </div>`;
 
   const metricsHtml = `
     <div class="metrics-bar">
       ${[
-        ['52W Position',    metrics.pricePosition + '%',    metrics.pricePosition > 60 ? 'positive' : metrics.pricePosition < 35 ? 'cyan' : ''],
-        ['Trend Consistency', metrics.trendConsistency + '%', metrics.trendConsistency > 60 ? 'positive' : 'negative'],
-        ['30D Return',      (metrics.returnPct30d > 0 ? '+' : '') + metrics.returnPct30d + '%', metrics.returnPct30d > 0 ? 'positive' : 'negative'],
-        ['Daily Volatility', metrics.volatilityPct + '%',   metrics.volatilityPct < 1.5 ? 'positive' : 'negative'],
-        ['Upside to Res.',  metrics.upsideToResistance + '%', 'cyan'],
-        ['Above Support',   '+' + metrics.priceVsSupport + '%', 'positive'],
+        ['52W Position',      metrics.pricePosition + '%',                               metrics.pricePosition > 60 ? 'positive' : metrics.pricePosition < 35 ? 'cyan' : ''],
+        ['Trend Consistency', metrics.trendConsistency + '%',                            metrics.trendConsistency > 60 ? 'positive' : 'negative'],
+        ['30D Return',        (metrics.returnPct30d > 0 ? '+' : '') + metrics.returnPct30d + '%', metrics.returnPct30d > 0 ? 'positive' : 'negative'],
+        ['Daily Volatility',  metrics.volatilityPct + '%',                               metrics.volatilityPct < 1.5 ? 'positive' : 'negative'],
+        ['Upside to Res.',    metrics.upsideToResistance + '%',                          'cyan'],
+        ['Above Support',     '+' + metrics.priceVsSupport + '%',                        'positive'],
       ].map(([label, val, cls]) => `
         <div class="metric-chip">
           <div class="metric-chip-label">${label}</div>
@@ -785,12 +836,13 @@ function renderInvestorScores(data) {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
         </svg>
-        INVESTOR INTELLIGENCE
+        LEGENDARY INVESTOR INTELLIGENCE
       </h3>
+      <div class="investor-count-badge">11 Masters</div>
     </div>
-    <div class="investor-grid">
-      ${scoreCard({ name: 'Warren Buffett', icon: '🏦', score: buffett.score, rating: buffett.rating, quote: buffett.quote, positive: buffett.positive, negative: buffett.negative, colorVar: '#00e676', accentClass: 'buffett' })}
-      ${scoreCard({ name: 'Rakesh Jhunjhunwala', icon: '📈', score: jhunjhunwala.score, rating: jhunjhunwala.rating, quote: jhunjhunwala.quote, positive: jhunjhunwala.positive, negative: jhunjhunwala.negative, colorVar: '#b44aff', accentClass: 'rj' })}
+    ${consensusHtml}
+    <div class="legend-grid">
+      ${LEGENDS.map(legendCard).join('')}
     </div>
     ${metricsHtml}`;
 }

@@ -250,226 +250,335 @@ function analyzeStock(history) {
   };
 }
 
-// ── Warren Buffett & Rakesh Jhunjhunwala Scoring ─────────────────────────────
+// ── All 10 Legendary Investor Scoring Engines ────────────────────────────────
 function computeInvestorScores({ closes, highs, lows, volumes, currentPrice,
   currentRSI, currentMACD, currentSMA20, currentSMA50, currentBB, volumeRatio,
   resistance, support }) {
 
-  const w52High = Math.max(...highs.slice(-252).length ? highs.slice(-252) : highs);
-  const w52Low  = Math.min(...lows.slice(-252).length  ? lows.slice(-252)  : lows);
+  const w52High = Math.max(...(highs.slice(-252).length ? highs.slice(-252) : highs));
+  const w52Low  = Math.min(...(lows.slice(-252).length  ? lows.slice(-252)  : lows));
   const range   = w52High - w52Low || 1;
-  const pricePosition = (currentPrice - w52Low) / range; // 0 = at low, 1 = at high
+  const pricePosition = (currentPrice - w52Low) / range;
 
-  // Daily returns (for volatility / consistency)
   const returns = [];
-  for (let i = 1; i < closes.length; i++) {
+  for (let i = 1; i < closes.length; i++)
     returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
-  }
-  const recent30Returns = returns.slice(-30);
-  const avgReturn = recent30Returns.reduce((a, b) => a + b, 0) / (recent30Returns.length || 1);
-  const stdDev    = Math.sqrt(recent30Returns.reduce((a, b) => a + (b - avgReturn) ** 2, 0) / (recent30Returns.length || 1));
-  const sharpeProxy = stdDev > 0 ? (avgReturn / stdDev) : 0; // Higher = better risk-adjusted return
 
-  // Trend consistency: % of last 20 days that closed up
-  const last20Returns = returns.slice(-20);
-  const positiveDays  = last20Returns.filter(r => r > 0).length;
-  const trendConsistency = positiveDays / (last20Returns.length || 1); // 0–1
+  const recent30 = returns.slice(-30);
+  const avgReturn = recent30.reduce((a, b) => a + b, 0) / (recent30.length || 1);
+  const stdDev    = Math.sqrt(recent30.reduce((a, b) => a + (b - avgReturn) ** 2, 0) / (recent30.length || 1));
+  const sharpeProxy = stdDev > 0 ? avgReturn / stdDev : 0;
 
-  // Bollinger band width (volatility proxy)
+  const last20Returns  = returns.slice(-20);
+  const trendConsistency = last20Returns.filter(r => r > 0).length / (last20Returns.length || 1);
   const bbWidth = currentBB ? (currentBB.upper - currentBB.lower) / currentBB.middle : 0.1;
-
-  // Price vs SMA proximity (trend health)
   const aboveSMA20 = currentPrice > currentSMA20;
   const aboveSMA50 = currentPrice > currentSMA50;
   const goldenCross = currentSMA20 > currentSMA50;
-
-  // MACD histogram trend (last 3 bars)
   const macdPositive = currentMACD && currentMACD.histogram > 0;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // WARREN BUFFETT SCORE  (Value + Safety + Quality)
-  // Philosophy: "Buy wonderful companies at fair prices; focus on durable moat,
-  //              low debt, consistent earnings, and a margin of safety."
-  // ────────────────────────────────────────────────────────────────────────────
+  const makeRating = (score) =>
+    score >= 75 ? 'STRONG BUY' : score >= 55 ? 'BUY' : score >= 38 ? 'HOLD' : score >= 22 ? 'WATCH' : 'AVOID';
+
+  // ── 1. BENJAMIN GRAHAM — Deep Value / Net-Net / Margin of Safety ──────────
+  let grahamScore = 0;
+  const grahamPos = [], grahamNeg = [];
+  if (pricePosition < 0.25)      { grahamScore += 30; grahamPos.push('Deeply discounted from 52W high — classic Graham margin of safety'); }
+  else if (pricePosition < 0.40) { grahamScore += 18; grahamPos.push('Trading at discount — margin of safety exists'); }
+  else if (pricePosition > 0.75) { grahamNeg.push('Near 52W high — insufficient margin of safety'); }
+
+  if (bbWidth < 0.05)      { grahamScore += 25; grahamPos.push('Extremely stable price — hallmark of a durable business'); }
+  else if (bbWidth < 0.09) { grahamScore += 12; grahamPos.push('Moderate volatility — business reasonably stable'); }
+  else                     { grahamNeg.push('High volatility — Graham avoids speculative stocks'); }
+
+  if (currentRSI < 30)      { grahamScore += 25; grahamPos.push('RSI deeply oversold — market has given up on it, potential deep value'); }
+  else if (currentRSI < 40) { grahamScore += 15; grahamPos.push('Low RSI — market undervaluing the stock'); }
+  else if (currentRSI > 65) { grahamNeg.push('Elevated RSI — market may have fully priced in value'); }
+
+  if (!aboveSMA50 && trendConsistency > 0.45) { grahamScore += 20; grahamPos.push('Below trend average but stabilising — potential turnaround'); }
+  else if (aboveSMA50)                         { grahamScore += 10; }
+
+  // ── 2. WARREN BUFFETT — Value / Safety / Moat ────────────────────────────
   let buffettScore = 0;
-  const buffettInsights = [];
-  const buffettPositive = [];
-  const buffettNegative = [];
+  const buffettPos = [], buffettNeg = [];
+  if (pricePosition < 0.35)      { buffettScore += 25; buffettPos.push('Near 52W lows — classic margin of safety'); }
+  else if (pricePosition < 0.55) { buffettScore += 15; buffettPos.push('Price in fair-value zone — reasonable entry'); }
+  else if (pricePosition > 0.85) { buffettNeg.push('Near 52W highs — limited margin of safety'); }
 
-  // 1. Value zone: Price in lower half of 52W range (Margin of Safety)
-  if (pricePosition < 0.35) {
-    buffettScore += 25;
-    buffettPositive.push('Trading near 52-week lows — classic margin of safety');
-  } else if (pricePosition < 0.55) {
-    buffettScore += 15;
-    buffettPositive.push('Price in fair-value zone — reasonable entry point');
-  } else if (pricePosition > 0.85) {
-    buffettNegative.push('Trading near 52-week highs — limited margin of safety');
-  }
+  if (bbWidth < 0.05)      { buffettScore += 20; buffettPos.push('Low volatility — stable, predictable business'); }
+  else if (bbWidth < 0.10) { buffettScore += 10; buffettPos.push('Moderate volatility — reasonably stable'); }
+  else                     { buffettNeg.push('High volatility — Buffett avoids unpredictable swings'); }
 
-  // 2. Low volatility (Buffett hates unpredictable businesses)
-  if (bbWidth < 0.05) {
-    buffettScore += 20;
-    buffettPositive.push('Low price volatility — signals stable, predictable business');
-  } else if (bbWidth < 0.10) {
-    buffettScore += 10;
-    buffettPositive.push('Moderate volatility — business reasonably stable');
-  } else {
-    buffettNegative.push('High volatility — Buffett avoids unpredictable price swings');
-  }
+  if (trendConsistency > 0.65)      { buffettScore += 20; buffettPos.push('Consistent uptrend — signs of strong competitive moat'); }
+  else if (trendConsistency > 0.50) { buffettScore += 10; buffettPos.push('Mostly positive trend — moderate strength'); }
+  else                               { buffettNeg.push('Inconsistent trend — uncertain business performance'); }
 
-  // 3. Trend quality (consistent uptrend = durable competitive advantage)
-  if (trendConsistency > 0.65) {
-    buffettScore += 20;
-    buffettPositive.push('Consistent upward trend — signs of strong competitive moat');
-  } else if (trendConsistency > 0.50) {
-    buffettScore += 10;
-    buffettPositive.push('Mostly positive trend — moderate business strength');
-  } else {
-    buffettNegative.push('Inconsistent price trend — uncertain business performance');
-  }
+  if (aboveSMA50 && goldenCross) { buffettScore += 20; buffettPos.push('Golden Cross active — long-term uptrend intact'); }
+  else if (aboveSMA50)           { buffettScore += 10; buffettPos.push('Above 50-day average — medium-term trend positive'); }
+  else                           { buffettNeg.push('Below 50-day average — long-term trend weakening'); }
 
-  // 4. Established long-term trend (SMA50)
-  if (aboveSMA50 && goldenCross) {
-    buffettScore += 20;
-    buffettPositive.push('Golden Cross active — long-term uptrend intact');
-  } else if (aboveSMA50) {
-    buffettScore += 10;
-    buffettPositive.push('Above 50-day average — medium-term trend positive');
-  } else {
-    buffettNegative.push('Below 50-day average — long-term trend weakening');
-  }
+  if (currentRSI >= 35 && currentRSI <= 60) { buffettScore += 15; buffettPos.push('RSI in healthy zone — not overbought or panic-sold'); }
+  else if (currentRSI < 35)                  { buffettScore += 8;  buffettPos.push('Oversold RSI — potential value opportunity emerging'); }
+  else                                        { buffettNeg.push('Elevated RSI — reduced margin of safety'); }
 
-  // 5. RSI in non-speculative zone (Buffett avoids frothy stocks)
-  if (currentRSI >= 35 && currentRSI <= 60) {
-    buffettScore += 15;
-    buffettPositive.push('RSI in healthy zone — stock not overbought or in panic');
-  } else if (currentRSI < 35) {
-    buffettScore += 8;
-    buffettPositive.push('Oversold RSI — potential value opportunity emerging');
-  } else {
-    buffettNegative.push('Elevated RSI — stock may be overvalued, reduced margin of safety');
-  }
+  // ── 3. PETER LYNCH — GARP / Growth at Reasonable Price ──────────────────
+  let lynchScore = 0;
+  const lynchPos = [], lynchNeg = [];
+  if (currentRSI >= 45 && currentRSI <= 65)  { lynchScore += 20; lynchPos.push('RSI in GARP zone — not overvalued, not beaten down'); }
+  else if (currentRSI >= 40 && currentRSI < 45) { lynchScore += 10; }
+  else if (currentRSI > 70)                   { lynchNeg.push('Overbought — Lynch avoids overpriced growth stocks'); }
+  else if (currentRSI < 35)                   { lynchNeg.push('Too beaten down — may not be a growth compounder yet'); }
 
-  const buffettRating =
-    buffettScore >= 75 ? 'STRONG BUY'  :
-    buffettScore >= 55 ? 'BUY'         :
-    buffettScore >= 40 ? 'HOLD'        :
-    buffettScore >= 25 ? 'WATCH'       : 'AVOID';
+  if (pricePosition >= 0.40 && pricePosition <= 0.75) { lynchScore += 20; lynchPos.push('Price in GARP sweet spot — growth at reasonable price'); }
+  else if (pricePosition > 0.75)                       { lynchNeg.push('Too expensive for GARP — Lynch would wait for a pullback'); }
 
-  const buffettQuote =
-    buffettScore >= 75 ? '"Price is what you pay, value is what you get. This looks like value."' :
-    buffettScore >= 55 ? '"Be fearless when others are fearful. A reasonable entry is forming."' :
-    buffettScore >= 40 ? '"Only buy something you\'d be perfectly happy to hold for 10 years."' :
-                         '"The stock market is a device for transferring money from the impatient to the patient."';
+  if (aboveSMA20 && aboveSMA50) { lynchScore += 20; lynchPos.push('Above both moving averages — consistent growth trend'); }
+  else if (aboveSMA50)          { lynchScore += 10; }
+  else                          { lynchNeg.push('Below key averages — growth trend not established'); }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // RAKESH JHUNJHUNWALA SCORE  (Growth + Momentum + India Story)
-  // Philosophy: "Invest in high-growth companies with strong management;
-  //              ride the India growth story with conviction."
-  // ────────────────────────────────────────────────────────────────────────────
-  let rjScore = 0;
-  const rjPositive = [];
-  const rjNegative = [];
+  if (trendConsistency > 0.60)      { lynchScore += 20; lynchPos.push('Strong trend consistency — hallmark of a ten-bagger candidate'); }
+  else if (trendConsistency > 0.50) { lynchScore += 10; }
+  else                               { lynchNeg.push('Inconsistent performance — not a steady compounder'); }
 
-  // 1. Strong momentum (RJ loved high-momentum, near-52W-high stocks)
-  if (pricePosition > 0.75) {
-    rjScore += 25;
-    rjPositive.push('Near 52-week high — strong market leadership & momentum');
-  } else if (pricePosition > 0.50) {
-    rjScore += 12;
-    rjPositive.push('Above mid-range — positive momentum building');
-  } else {
-    rjNegative.push('Well below 52-week high — momentum not yet established');
-  }
+  if (sharpeProxy > 0.12) { lynchScore += 20; lynchPos.push('Excellent risk-adjusted returns — Lynch-style quality growth'); }
+  else if (sharpeProxy > 0.05) { lynchScore += 10; }
+  else { lynchNeg.push('Poor risk-adjusted returns — not yet a ten-bagger story'); }
 
-  // 2. RSI in momentum zone (RJ bought strength, not weakness)
-  if (currentRSI >= 55 && currentRSI <= 72) {
-    rjScore += 20;
-    rjPositive.push('RSI in momentum zone (55–72) — classic RJ sweet spot');
-  } else if (currentRSI >= 45 && currentRSI < 55) {
-    rjScore += 8;
-    rjPositive.push('RSI building momentum — watch for breakout');
-  } else if (currentRSI > 72) {
-    rjNegative.push('RSI overbought — short-term pullback risk');
-  } else {
-    rjNegative.push('Low RSI — momentum not supportive of entry');
-  }
+  // ── 4. JOHN BOGLE — Index / Low-Cost / Long-Term / Diversification ────────
+  let bogleScore = 0;
+  const boglePos = [], bogleNeg = [];
+  if (bbWidth < 0.05)      { bogleScore += 30; boglePos.push('Very low volatility — Bogle loves stable, predictable returns'); }
+  else if (bbWidth < 0.09) { bogleScore += 15; boglePos.push('Moderate volatility — acceptable for long-term holding'); }
+  else                     { bogleNeg.push('High volatility — Bogle prefers boring, stable returns'); }
 
-  // 3. MACD bullish (trend continuation signal)
-  if (macdPositive) {
-    rjScore += 20;
-    rjPositive.push('MACD positive — bullish momentum confirmed');
-  } else {
-    rjNegative.push('MACD not bullish — wait for momentum to turn positive');
-  }
+  if (aboveSMA50 && goldenCross) { bogleScore += 30; boglePos.push('Strong long-term uptrend — ideal for stay-the-course investing'); }
+  else if (aboveSMA50)           { bogleScore += 15; boglePos.push('Above 50-day average — medium-term trend supports holding'); }
+  else                           { bogleNeg.push('Below key trend lines — not a comfortable long-term hold yet'); }
 
-  // 4. Sharpe-like ratio (RJ focused on quality of returns)
-  if (sharpeProxy > 0.15) {
-    rjScore += 20;
-    rjPositive.push('Excellent risk-adjusted returns — high-quality growth stock');
-  } else if (sharpeProxy > 0.05) {
-    rjScore += 10;
-    rjPositive.push('Positive risk-adjusted returns — decent growth potential');
-  } else {
-    rjNegative.push('Poor risk-adjusted returns — growth story not yet playing out');
-  }
+  if (trendConsistency > 0.55) { bogleScore += 20; boglePos.push('Consistent positive days — rewards patient, long-term investors'); }
+  else                          { bogleNeg.push('Inconsistent performance — Bogle prefers steady market returns'); }
 
-  // 5. Volume surge (RJ watched for institutional conviction)
-  if (volumeRatio > 1.8) {
-    rjScore += 15;
-    rjPositive.push('Volume surge detected — institutional conviction and accumulation');
-  } else if (volumeRatio > 1.2) {
-    rjScore += 8;
-    rjPositive.push('Above-average volume — growing investor interest');
-  } else {
-    rjNegative.push('Low volume — institutional participation limited');
-  }
+  if (volumeRatio < 1.4) { bogleScore += 20; boglePos.push('Normal volume — low speculation, genuine market price'); }
+  else                    { bogleNeg.push('Elevated volume — possible speculation, not Bogle\'s style'); }
 
-  const rjRating =
-    rjScore >= 75 ? 'STRONG BUY'  :
-    rjScore >= 55 ? 'BUY'         :
-    rjScore >= 40 ? 'HOLD'        :
-    rjScore >= 25 ? 'WATCH'       : 'AVOID';
+  // ── 5. BURTON MALKIEL — Efficient Market / Random Walk ───────────────────
+  let malkielScore = 0;
+  const malkielPos = [], malkielNeg = [];
+  if (pricePosition >= 0.35 && pricePosition <= 0.65) { malkielScore += 30; malkielPos.push('Near fair value — efficient market pricing at work'); }
+  else if (pricePosition < 0.25 || pricePosition > 0.80) { malkielNeg.push('At extremes — random walk suggests reversion to mean'); }
 
-  const rjQuote =
-    rjScore >= 75 ? '"I am bullish on India. This stock has the growth story written all over it."' :
-    rjScore >= 55 ? '"Be a buyer of businesses that ride the India growth wave."'                    :
-    rjScore >= 40 ? '"Patience is the key. Wait for the right entry in a good business."'            :
-                    '"Don\'t fight the trend. Wait for the momentum to establish itself."';
+  if (bbWidth < 0.07)      { malkielScore += 25; malkielPos.push('Low volatility — market efficiently pricing the stock'); }
+  else if (bbWidth > 0.14) { malkielNeg.push('High volatility — inefficient pricing, random walk likely'); }
+  else                     { malkielScore += 12; }
 
-  // ── Derived fundamental proxies ──
-  const priceChangeVsSupport   = round2(((currentPrice - support) / support) * 100);
-  const priceChangeVsResistance = round2(((resistance - currentPrice) / currentPrice) * 100);
-  const uptrendStrength = round2(trendConsistency * 100);
-  const volatilityPct   = round2(stdDev * 100);
-  const returnPct30d    = round2(avgReturn * 100 * 30); // annualised 30d
+  if (currentRSI >= 43 && currentRSI <= 57) { malkielScore += 25; malkielPos.push('RSI near neutral — perfectly efficient market equilibrium'); }
+  else if (currentRSI < 35 || currentRSI > 70) { malkielNeg.push('RSI at extremes — market temporarily inefficient, expect reversion'); malkielScore += 10; }
+  else { malkielScore += 12; }
 
-  return {
-    buffett: {
-      score:    Math.min(buffettScore, 100),
-      rating:   buffettRating,
-      quote:    buffettQuote,
-      positive: buffettPositive,
-      negative: buffettNegative,
-    },
-    jhunjhunwala: {
-      score:    Math.min(rjScore, 100),
-      rating:   rjRating,
-      quote:    rjQuote,
-      positive: rjPositive,
-      negative: rjNegative,
-    },
-    metrics: {
-      pricePosition:         round2(pricePosition * 100),  // % of 52W range
-      trendConsistency:      uptrendStrength,               // % positive days (20d)
-      volatilityPct,                                        // daily std dev %
-      returnPct30d,                                         // approx 30d return %
-      priceVsSupport:        priceChangeVsSupport,          // % above support
-      upsideToResistance:    priceChangeVsResistance,       // % to resistance
-      sharpeProxy:           round2(sharpeProxy),
-    },
+  if (trendConsistency >= 0.45 && trendConsistency <= 0.60) { malkielScore += 20; malkielPos.push('Random-walk-like returns — validates efficient market hypothesis'); }
+  else { malkielScore += 8; }
+
+  // ── 6. CHARLIE MUNGER — Quality Moat / Cash Generation / Mental Models ────
+  let mungerScore = 0;
+  const mungerPos = [], mungerNeg = [];
+  if (trendConsistency > 0.65) { mungerScore += 25; mungerPos.push('Exceptional trend consistency — strong competitive moat evident'); }
+  else if (trendConsistency > 0.55) { mungerScore += 12; mungerPos.push('Good consistency — moderate moat, worth monitoring'); }
+  else { mungerNeg.push('Inconsistent performance — moat may not be durable'); }
+
+  if (sharpeProxy > 0.15) { mungerScore += 25; mungerPos.push('Excellent risk-adjusted returns — high-quality cash-generating business'); }
+  else if (sharpeProxy > 0.08) { mungerScore += 12; mungerPos.push('Positive risk-adjusted returns — decent quality business'); }
+  else { mungerNeg.push('Poor risk-adjusted returns — business quality questionable'); }
+
+  if (pricePosition < 0.65) { mungerScore += 20; mungerPos.push('Below peak price — wonderful company at a fair price'); }
+  else { mungerNeg.push('Near peak price — Munger says pay fair, not dear'); }
+
+  if (aboveSMA50 && goldenCross) { mungerScore += 20; mungerPos.push('Golden cross with uptrend — business compounding is confirmed'); }
+  else if (aboveSMA50)           { mungerScore += 10; }
+  else                           { mungerNeg.push('Below key averages — business may be losing its compounding power'); }
+
+  if (macdPositive) { mungerScore += 10; mungerPos.push('MACD positive — bullish momentum confirming business strength'); }
+  else { mungerNeg.push('Weak MACD — momentum not supporting quality narrative yet'); }
+
+  // ── 7. GEORGE SOROS — Reflexivity / Macro Momentum / Contrarian ──────────
+  let sorosScore = 0;
+  const sorosPos = [], sorosNeg = [];
+  if (pricePosition > 0.70)      { sorosScore += 25; sorosPos.push('Near 52W high — reflexivity in action, trend feeding itself'); }
+  else if (pricePosition > 0.50) { sorosScore += 12; sorosPos.push('Above mid-range — positive reflexivity starting'); }
+  else if (pricePosition < 0.25) { sorosNeg.push('Near lows — negative reflexivity, trend could continue down'); }
+
+  if (currentRSI >= 55 && currentRSI <= 78) { sorosScore += 25; sorosPos.push('RSI in momentum zone — Soros sweet spot for trend riding'); }
+  else if (currentRSI > 78) { sorosNeg.push('RSI overbought — reflexive trend may be exhausted'); }
+  else if (currentRSI < 45) { sorosNeg.push('Weak RSI — reflexivity not yet established'); }
+  else { sorosScore += 10; }
+
+  if (macdPositive) { sorosScore += 20; sorosPos.push('MACD bullish — trend continuation signal for reflexive bet'); }
+  else              { sorosNeg.push('MACD not bullish — reflexive momentum not confirmed'); }
+
+  if (volumeRatio > 1.8) { sorosScore += 20; sorosPos.push('Volume surge — institutional conviction, classic Soros entry signal'); }
+  else if (volumeRatio > 1.3) { sorosScore += 10; sorosPos.push('Above-average volume — growing investor interest'); }
+  else { sorosNeg.push('Low volume — lacks the conviction Soros looks for'); }
+
+  if (sharpeProxy > 0.15) { sorosScore += 10; sorosPos.push('Strong risk-adjusted momentum — high-conviction trade setup'); }
+  else if (sharpeProxy > 0.05) { sorosScore += 5; }
+
+  // ── 8. STANLEY DRUCKENMILLER — Top-Down / High Conviction / 30% Returns ──
+  let druckenmillerScore = 0;
+  const druckPos = [], druckNeg = [];
+  if (pricePosition > 0.65)      { druckenmillerScore += 25; druckPos.push('Near 52W high — Druckenmiller rides strong upward momentum'); }
+  else if (pricePosition > 0.50) { druckenmillerScore += 12; druckPos.push('Above mid-range — momentum building for a high-conviction bet'); }
+  else                           { druckNeg.push('Below mid-range — not the momentum Druckenmiller seeks'); }
+
+  if (currentRSI >= 55 && currentRSI <= 75) { druckenmillerScore += 25; druckPos.push('RSI in momentum zone — strong but not overextended'); }
+  else if (currentRSI > 75)                  { druckNeg.push('RSI overextended — Druckenmiller trims at extremes'); }
+  else if (currentRSI < 45)                  { druckNeg.push('Weak RSI — lacks the momentum for a Druckenmiller-style bet'); }
+  else                                        { druckenmillerScore += 10; }
+
+  if (macdPositive && currentMACD?.histogram > 0) { druckenmillerScore += 20; druckPos.push('MACD strongly positive — trend confirmation for high-conviction entry'); }
+  else if (macdPositive)                           { druckenmillerScore += 10; }
+  else                                             { druckNeg.push('MACD not bullish — no momentum confirmation'); }
+
+  if (volumeRatio > 1.7) { druckenmillerScore += 20; druckPos.push('High volume conviction — institutional players accumulating'); }
+  else if (volumeRatio > 1.2) { druckenmillerScore += 10; druckPos.push('Above-average volume — smart money taking notice'); }
+  else { druckNeg.push('Low volume — missing the institutional conviction Druckenmiller needs'); }
+
+  if (goldenCross && aboveSMA50) { druckenmillerScore += 10; druckPos.push('Golden Cross confirmed — long-term momentum in full swing'); }
+  else { druckNeg.push('No golden cross — long-term momentum not yet confirmed'); }
+
+  // ── 9. CARL ICAHN — Activist / Beaten-Down / Unlock Shareholder Value ─────
+  let icahnScore = 0;
+  const icahnPos = [], icahnNeg = [];
+  if (pricePosition < 0.30)      { icahnScore += 30; icahnPos.push('Deeply beaten down — classic Icahn activist opportunity territory'); }
+  else if (pricePosition < 0.45) { icahnScore += 18; icahnPos.push('Below mid-range — potential undervaluation for activist campaign'); }
+  else if (pricePosition > 0.75) { icahnNeg.push('Near highs — limited upside for activist unlock thesis'); }
+
+  if (!aboveSMA50) { icahnScore += 20; icahnPos.push('Below 50-day average — stock is unloved, ripe for activist attention'); }
+  else             { icahnNeg.push('Above trend average — may already be fairly priced'); }
+
+  if (currentRSI < 35)      { icahnScore += 25; icahnPos.push('RSI deeply oversold — market has given up, activist discount confirmed'); }
+  else if (currentRSI < 45) { icahnScore += 15; icahnPos.push('Below-neutral RSI — stock not loved by the market'); }
+  else if (currentRSI > 60) { icahnNeg.push('RSI elevated — activist discount may not exist'); }
+
+  if (volumeRatio > 1.5) { icahnScore += 15; icahnPos.push('Unusual volume — possible accumulation underway, Icahn-like activity'); }
+  else if (volumeRatio > 1.1) { icahnScore += 8; }
+  else { icahnNeg.push('Low volume — no signs of institutional accumulation yet'); }
+
+  const upsidePct = (resistance - currentPrice) / currentPrice;
+  if (upsidePct > 0.20) { icahnScore += 10; icahnPos.push('Large upside to resistance — significant shareholder value to unlock'); }
+  else if (upsidePct > 0.10) { icahnScore += 5; }
+
+  // ── 10. RAY DALIO — All-Weather / Risk Parity / Macro Cycles ─────────────
+  let dalioScore = 0;
+  const dalioPos = [], dalioNeg = [];
+  if (currentRSI >= 42 && currentRSI <= 62) { dalioScore += 25; dalioPos.push('RSI balanced — all-weather zone, not overheated or panicked'); }
+  else if (currentRSI < 30 || currentRSI > 75) { dalioNeg.push('RSI at extremes — not consistent with all-weather stability'); dalioScore += 5; }
+  else { dalioScore += 12; }
+
+  if (bbWidth < 0.07)      { dalioScore += 25; dalioPos.push('Low volatility — all-weather portfolio needs stable assets'); }
+  else if (bbWidth < 0.12) { dalioScore += 12; dalioPos.push('Moderate volatility — manageable in a diversified portfolio'); }
+  else                     { dalioNeg.push('High volatility — too risky for all-weather allocation'); }
+
+  if (trendConsistency > 0.55) { dalioScore += 20; dalioPos.push('Consistent positive returns — ideal for risk-parity framework'); }
+  else if (trendConsistency > 0.45) { dalioScore += 10; }
+  else { dalioNeg.push('Inconsistent returns — does not fit Dalio\'s balanced portfolio'); }
+
+  if (aboveSMA50) { dalioScore += 20; dalioPos.push('Above 50-day average — macro trend supports long position'); }
+  else            { dalioNeg.push('Below trend average — macro cycle may be turning negative'); }
+
+  if (pricePosition >= 0.30 && pricePosition <= 0.70) { dalioScore += 10; dalioPos.push('In middle of 52W range — balanced risk/reward for all-weather'); }
+  else { dalioNeg.push('At price extremes — not ideal for balanced risk-parity allocation'); }
+
+  // ── Quotes ────────────────────────────────────────────────────────────────
+  const quotes = {
+    graham: grahamScore >= 65
+      ? '"The intelligent investor is a realist who sells to optimists and buys from pessimists."'
+      : '"Price is what you pay. You must always have a margin of safety."',
+    buffett: buffettScore >= 65
+      ? '"Price is what you pay, value is what you get. This looks like value."'
+      : '"Be fearful when others are greedy, and greedy when others are fearful."',
+    lynch: lynchScore >= 65
+      ? '"Go for a business that any idiot can run — because sooner or later, any idiot probably is going to run it."'
+      : '"Know what you own, and know why you own it."',
+    bogle: bogleScore >= 65
+      ? '"Time is your friend; impulse is your enemy. Stay the course."'
+      : '"Don\'t look for the needle in the haystack. Just buy the haystack."',
+    malkiel: malkielScore >= 65
+      ? '"A blindfolded monkey throwing darts… would select a portfolio that would do just as well."'
+      : '"Most investors would be better off in an index fund."',
+    munger: mungerScore >= 65
+      ? '"It\'s not supposed to be easy. Anyone who finds it easy is stupid."'
+      : '"All I want to know is where I\'m going to die, so I\'ll never go there."',
+    soros: sorosScore >= 65
+      ? '"Markets are constantly in a state of uncertainty and flux. Money is made by discounting the obvious."'
+      : '"It\'s not whether you\'re right or wrong that matters, but how much money you make when you\'re right."',
+    druckenmiller: druckenmillerScore >= 65
+      ? '"The most important thing to me is preserving capital, and then making a lot of money."'
+      : '"I\'ve learned many things from George Soros, but perhaps the most is that it\'s not whether you\'re right or wrong."',
+    icahn: icahnScore >= 65
+      ? '"In business, I look for economic castles protected by unbreachable moats."'
+      : '"My father always said that if you want a friend on Wall Street, get a dog."',
+    dalio: dalioScore >= 65
+      ? '"The biggest mistake investors make is to believe that what happened in the recent past is likely to persist."'
+      : '"He who lives by the crystal ball will eat shattered glass."',
   };
+
+  // ── Build result ──────────────────────────────────────────────────────────
+  const investors = {
+    graham:        { score: Math.min(grahamScore,        100), rating: makeRating(grahamScore),        quote: quotes.graham,        positive: grahamPos,   negative: grahamNeg,   name: 'Benjamin Graham',      icon: '📚', philosophy: 'Value · Margin of Safety · Net-Net' },
+    buffett:       { score: Math.min(buffettScore,       100), rating: makeRating(buffettScore),       quote: quotes.buffett,       positive: buffettPos,  negative: buffettNeg,  name: 'Warren Buffett',       icon: '🏦', philosophy: 'Value · Safety · Moat' },
+    lynch:         { score: Math.min(lynchScore,         100), rating: makeRating(lynchScore),         quote: quotes.lynch,         positive: lynchPos,    negative: lynchNeg,    name: 'Peter Lynch',          icon: '📈', philosophy: 'Growth · GARP · Ten-Bagger' },
+    bogle:         { score: Math.min(bogleScore,         100), rating: makeRating(bogleScore),         quote: quotes.bogle,         positive: boglePos,    negative: bogleNeg,    name: 'John Bogle',           icon: '📊', philosophy: 'Index · Low-Cost · Long-Term' },
+    malkiel:       { score: Math.min(malkielScore,       100), rating: makeRating(malkielScore),       quote: quotes.malkiel,       positive: malkielPos,  negative: malkielNeg,  name: 'Burton Malkiel',       icon: '🎲', philosophy: 'Efficient Market · Random Walk' },
+    munger:        { score: Math.min(mungerScore,        100), rating: makeRating(mungerScore),        quote: quotes.munger,        positive: mungerPos,   negative: mungerNeg,   name: 'Charlie Munger',       icon: '🔬', philosophy: 'Quality · Moat · Mental Models' },
+    soros:         { score: Math.min(sorosScore,         100), rating: makeRating(sorosScore),         quote: quotes.soros,         positive: sorosPos,    negative: sorosNeg,    name: 'George Soros',         icon: '🌊', philosophy: 'Reflexivity · Macro · Momentum' },
+    druckenmiller: { score: Math.min(druckenmillerScore, 100), rating: makeRating(druckenmillerScore), quote: quotes.druckenmiller, positive: druckPos,    negative: druckNeg,    name: 'Stanley Druckenmiller', icon: '⚡', philosophy: 'Top-Down · Macro · High Conviction' },
+    icahn:         { score: Math.min(icahnScore,         100), rating: makeRating(icahnScore),         quote: quotes.icahn,         positive: icahnPos,    negative: icahnNeg,    name: 'Carl Icahn',           icon: '🦅', philosophy: 'Activist · Undervalued · Catalyst' },
+    dalio:         { score: Math.min(dalioScore,         100), rating: makeRating(dalioScore),         quote: quotes.dalio,         positive: dalioPos,    negative: dalioNeg,    name: 'Ray Dalio',            icon: '🌐', philosophy: 'All-Weather · Risk Parity · Macro' },
+    jhunjhunwala:  null, // computed below for backward compat
+  };
+
+  // Keep original Jhunjhunwala engine (India-specific)
+  let rjScore = 0;
+  const rjPos = [], rjNeg = [];
+  if (pricePosition > 0.75)      { rjScore += 25; rjPos.push('Near 52-week high — strong market leadership & momentum'); }
+  else if (pricePosition > 0.50) { rjScore += 12; rjPos.push('Above mid-range — positive momentum building'); }
+  else                           { rjNeg.push('Well below 52-week high — momentum not yet established'); }
+  if (currentRSI >= 55 && currentRSI <= 72) { rjScore += 20; rjPos.push('RSI in momentum zone (55–72) — classic RJ sweet spot'); }
+  else if (currentRSI >= 45 && currentRSI < 55) { rjScore += 8; rjPos.push('RSI building — watch for breakout'); }
+  else if (currentRSI > 72)      { rjNeg.push('RSI overbought — short-term pullback risk'); }
+  else                           { rjNeg.push('Low RSI — momentum not supportive of entry'); }
+  if (macdPositive) { rjScore += 20; rjPos.push('MACD positive — bullish momentum confirmed'); }
+  else              { rjNeg.push('MACD not bullish — wait for momentum turn'); }
+  if (sharpeProxy > 0.15) { rjScore += 20; rjPos.push('Excellent risk-adjusted returns — high-quality growth stock'); }
+  else if (sharpeProxy > 0.05) { rjScore += 10; rjPos.push('Positive risk-adjusted returns — decent growth potential'); }
+  else { rjNeg.push('Poor risk-adjusted returns — growth story not playing out'); }
+  if (volumeRatio > 1.8)      { rjScore += 15; rjPos.push('Volume surge — institutional conviction and accumulation'); }
+  else if (volumeRatio > 1.2) { rjScore += 8;  rjPos.push('Above-average volume — growing investor interest'); }
+  else                        { rjNeg.push('Low volume — institutional participation limited'); }
+  const rjRating = makeRating(rjScore);
+  const rjQuote = rjScore >= 75
+    ? '"I am bullish on India. This stock has the growth story written all over it."'
+    : rjScore >= 55 ? '"Be a buyer of businesses that ride the India growth wave."'
+    : '"Patience is the key. Wait for the right entry in a good business."';
+  investors.jhunjhunwala = { score: Math.min(rjScore, 100), rating: rjRating, quote: rjQuote, positive: rjPos, negative: rjNeg, name: 'Rakesh Jhunjhunwala', icon: '🇮🇳', philosophy: 'Growth · Momentum · India Story' };
+
+  // ── Consensus ─────────────────────────────────────────────────────────────
+  const allScores = Object.values(investors).map(inv => inv.score);
+  const avgScore  = Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length);
+  const buyCount  = Object.values(investors).filter(inv => inv.rating.includes('BUY')).length;
+  const consensus = buyCount >= 8 ? 'STRONG BUY' : buyCount >= 6 ? 'BUY' : buyCount >= 4 ? 'HOLD' : buyCount >= 2 ? 'WATCH' : 'AVOID';
+
+  // ── Derived metrics ───────────────────────────────────────────────────────
+  const metrics = {
+    pricePosition:      round2(pricePosition * 100),
+    trendConsistency:   round2(trendConsistency * 100),
+    volatilityPct:      round2(stdDev * 100),
+    returnPct30d:       round2(avgReturn * 100 * 30),
+    priceVsSupport:     round2(((currentPrice - support) / support) * 100),
+    upsideToResistance: round2(((resistance - currentPrice) / currentPrice) * 100),
+    sharpeProxy:        round2(sharpeProxy),
+  };
+
+  return { ...investors, consensus: { score: avgScore, rating: consensus, buyCount, totalInvestors: 11 }, metrics };
 }
 
 // ── News Sentiment ────────────────────────────────────────────────────────────

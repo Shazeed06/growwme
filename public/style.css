@@ -479,7 +479,13 @@ body {
 
 /* ─── INVESTOR SCORES ─────────────────────────────────────────────────────────── */
 .investor-scores-section { margin-bottom:24px; animation:fadeInUp .5s ease .1s both; }
-.investor-scores-header  { margin-bottom:16px; }
+.investor-scores-header  { margin-bottom:16px;display:flex;align-items:center;gap:12px; }
+.investor-count-badge {
+  font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  background:rgba(83,103,255,.15);color:var(--primary);
+  border:1px solid rgba(83,103,255,.3);border-radius:20px;
+  padding:3px 10px;margin-left:auto;
+}
 .investor-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
 
 .investor-card {
@@ -929,6 +935,117 @@ body {
 .positive { color:var(--green); }
 .negative { color:var(--red);   }
 
+/* ─── LEGEND INVESTOR GRID (10 investors) ──────────────────────────────────── */
+.legend-consensus-bar {
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:14px;padding:16px 20px;margin-bottom:20px;
+  flex-wrap:wrap;gap:12px;
+}
+.consensus-left { display:flex;align-items:center;gap:14px; }
+.consensus-icon { font-size:1.5rem; }
+.consensus-label { font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em; }
+.consensus-rating {
+  font-size:1.1rem;font-weight:800;font-family:var(--font-body);
+  letter-spacing:.04em;
+}
+.consensus-rating.buy  { color:var(--green); }
+.consensus-rating.sell { color:var(--red); }
+.consensus-rating.hold { color:var(--orange); }
+.consensus-right { display:flex;align-items:center;gap:16px;flex-wrap:wrap; }
+.consensus-stat { text-align:center; }
+.consensus-stat-val { font-size:1.2rem;font-weight:700;color:var(--text-primary); }
+.consensus-stat-lab { font-size:.68rem;color:var(--text-muted);margin-top:1px; }
+.consensus-buy-bar {
+  height:6px;border-radius:3px;background:var(--border);
+  overflow:hidden;width:120px;
+}
+.consensus-buy-fill { height:100%;border-radius:3px;background:var(--gradient-buy); }
+
+.legend-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:12px;
+}
+.legend-card {
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:14px;padding:16px;
+  transition:transform .2s,border-color .2s,box-shadow .2s;
+  cursor:default;
+}
+.legend-card:hover {
+  transform:translateY(-2px);
+  border-color:var(--border-active);
+  box-shadow:0 6px 24px rgba(83,103,255,.1);
+}
+.legend-card-top {
+  display:flex;align-items:flex-start;
+  justify-content:space-between;margin-bottom:10px;gap:6px;
+}
+.legend-card-info { flex:1;min-width:0; }
+.legend-card-icon { font-size:1.4rem;margin-bottom:4px; }
+.legend-card-name {
+  font-size:.88rem;font-weight:700;color:var(--text-primary);
+  line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.legend-card-philosophy {
+  font-size:.68rem;color:var(--text-muted);margin-top:2px;line-height:1.3;
+}
+.legend-score-badge {
+  min-width:42px;height:42px;border-radius:10px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:var(--font-body);flex-shrink:0;
+}
+.legend-score-num {
+  font-size:1.1rem;font-weight:800;line-height:1;
+}
+.legend-score-label {
+  font-size:.55rem;font-weight:600;letter-spacing:.04em;margin-top:1px;
+}
+/* Score color tiers */
+.legend-score-badge.tier-great  { background:rgba(68,194,127,.15); color:var(--green); }
+.legend-score-badge.tier-good   { background:rgba(68,194,127,.08); color:#7ed8a8; }
+.legend-score-badge.tier-hold   { background:rgba(255,159,28,.1);  color:var(--orange); }
+.legend-score-badge.tier-watch  { background:rgba(230,91,78,.08);  color:#e8a090; }
+.legend-score-badge.tier-avoid  { background:rgba(230,91,78,.15);  color:var(--red); }
+
+.legend-score-bar-wrap {
+  height:3px;background:var(--border);border-radius:2px;
+  overflow:hidden;margin-bottom:8px;
+}
+.legend-score-bar {
+  height:100%;border-radius:2px;
+  transition:width .6s ease;
+}
+.legend-rating-chip {
+  display:inline-block;padding:2px 9px;border-radius:20px;
+  font-size:.67rem;font-weight:700;letter-spacing:.05em;margin-bottom:7px;
+}
+.legend-rating-chip.buy  { background:var(--green-bg);color:var(--green);border:1px solid rgba(68,194,127,.25); }
+.legend-rating-chip.sell { background:var(--red-bg);color:var(--red);border:1px solid rgba(230,91,78,.25); }
+.legend-rating-chip.hold { background:rgba(255,159,28,.1);color:var(--orange);border:1px solid rgba(255,159,28,.25); }
+.legend-rating-chip.watch{ background:rgba(255,159,28,.07);color:#ffcc66;border:1px solid rgba(255,204,102,.2); }
+.legend-rating-chip.avoid{ background:var(--red-bg);color:var(--red);border:1px solid rgba(230,91,78,.25); }
+
+.legend-points {
+  display:flex;flex-direction:column;gap:4px;
+}
+.legend-point {
+  display:flex;align-items:flex-start;gap:5px;
+  font-size:.72rem;line-height:1.35;color:var(--text-secondary);
+}
+.legend-point-dot {
+  width:5px;height:5px;border-radius:50%;
+  margin-top:4px;flex-shrink:0;
+}
+.legend-point.bull .legend-point-dot { background:var(--green); }
+.legend-point.bear .legend-point-dot { background:var(--red); }
+.legend-quote {
+  font-size:.7rem;font-style:italic;color:var(--text-muted);
+  border-left:2px solid var(--border);padding-left:8px;
+  margin-top:10px;line-height:1.4;
+}
+
 /* ─── BUY TODAY SECTION ──────────────────────────────────────────────────────── */
 .buy-today-section {
   margin-bottom:32px;
@@ -1097,6 +1214,7 @@ body {
   .metric-chip { min-width:calc(50% - 4px); }
   .news-grid { grid-template-columns:1fr; }
   .buy-today-grid{grid-template-columns:1fr}
+  .legend-grid{grid-template-columns:1fr}
   .news-sentiment-summary { gap:10px; }
   .news-recommendation { margin-left:0; }
   .hero-title { font-size:1.8rem; }
