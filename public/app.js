@@ -157,10 +157,14 @@ const SCORE_RATING_COLOR = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════════════════════
-let currentChart   = null;
+let currentChart     = null;
 let currentStockData = null;
-let searchTimeout  = null;
-let lastMarketOpen = null;
+let searchTimeout    = null;
+let lastMarketOpen   = null;
+let currentTab       = 'stocks';
+let sectorsLoaded    = false;
+let watchlist        = JSON.parse(localStorage.getItem('sp_watchlist') || '[]');
+let priceAlerts      = JSON.parse(localStorage.getItem('sp_alerts')    || '[]');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INIT
@@ -177,6 +181,8 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPopularStocks();
   setupSearch();
   setupKeyboardShortcuts();
+  updateWatchlistCount();
+  startAlertChecker();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -376,6 +382,184 @@ function showLanding() {
   document.getElementById('stockView').classList.add('hidden');
   document.getElementById('landingView').classList.remove('hidden');
   if (currentChart) { currentChart.destroy(); currentChart = null; }
+  showTab(currentTab);
+}
+
+// ── Landing Tab Switcher ──────────────────────────────────────────────────────
+function showTab(tab) {
+  currentTab = tab;
+  ['stocks', 'sectors', 'watchlist'].forEach(t => {
+    document.getElementById(`panel${t.charAt(0).toUpperCase() + t.slice(1)}`)?.classList.toggle('hidden', t !== tab);
+    document.getElementById(`tab-${t}`)?.classList.toggle('active', t === tab);
+  });
+  if (tab === 'sectors' && !sectorsLoaded) { sectorsLoaded = true; loadSectors(); }
+  if (tab === 'watchlist') renderWatchlistPanel();
+}
+
+// ── Sector Heatmap ────────────────────────────────────────────────────────────
+async function loadSectors() {
+  const el = document.getElementById('sectorHeatmap');
+  if (!el) return;
+  el.innerHTML = Array(8).fill(`
+    <div class="sector-card" style="opacity:.4">
+      <div class="loading-pulse" style="width:80px;height:16px;background:var(--border);border-radius:4px;margin-bottom:8px"></div>
+      <div class="loading-pulse" style="width:50px;height:22px;background:var(--border);border-radius:4px"></div>
+    </div>`).join('');
+  try {
+    const res  = await fetchWithTimeout('/api/sectors', 40_000);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderSectorHeatmap(data);
+  } catch {
+    el.innerHTML = '<div style="color:var(--text-muted);padding:20px">Sector data unavailable</div>';
+  }
+}
+
+function renderSectorHeatmap(sectors) {
+  const el = document.getElementById('sectorHeatmap');
+  if (!el) return;
+  el.innerHTML = sectors.map(s => {
+    const pos = s.avgChange >= 0;
+    const absChange = Math.abs(s.avgChange);
+    const intensity = Math.min(absChange / 3, 1); // 3% = full intensity
+    const bg = pos
+      ? `rgba(68,194,127,${0.08 + intensity * 0.22})`
+      : `rgba(230,91,78,${0.08 + intensity * 0.22})`;
+    return `<div class="sector-card" style="background:${bg};border-color:${pos ? '#44C27F33' : '#E65B4E33'}" onclick="">
+      <div class="sector-name">${s.sector}</div>
+      <div class="sector-change ${pos ? 'positive' : 'negative'}">${pos ? '▲' : '▼'} ${absChange.toFixed(2)}%</div>
+      <div class="sector-stocks-mini">
+        ${s.stocks.slice(0, 3).map(st => `
+          <span class="sector-stock-chip ${(st.changePercent||0) >= 0 ? 'positive' : 'negative'}" onclick="loadStock('${st.symbol}')">
+            ${cleanSymbol(st.symbol)} ${(st.changePercent||0) >= 0 ? '▲' : '▼'}${Math.abs(st.changePercent||0).toFixed(1)}%
+          </span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+function updateWatchlistCount() {
+  const el = document.getElementById('watchlistCount');
+  if (!el) return;
+  if (watchlist.length > 0) { el.textContent = watchlist.length; el.style.display = ''; }
+  else el.style.display = 'none';
+}
+
+function toggleWatchlist() {
+  if (!currentStockData) return;
+  const { symbol, name } = currentStockData;
+  const idx = watchlist.findIndex(w => w.symbol === symbol);
+  if (idx >= 0) watchlist.splice(idx, 1);
+  else watchlist.push({ symbol, name });
+  localStorage.setItem('sp_watchlist', JSON.stringify(watchlist));
+  updateWatchlistBtn(symbol);
+  updateWatchlistCount();
+}
+
+function updateWatchlistBtn(symbol) {
+  const btn  = document.getElementById('watchlistBtn');
+  const text = document.getElementById('watchlistBtnText');
+  if (!btn || !text) return;
+  const inList = watchlist.some(w => w.symbol === symbol);
+  btn.classList.toggle('active', inList);
+  text.textContent = inList ? '★ In Watchlist' : 'Add to Watchlist';
+}
+
+function renderWatchlistPanel() {
+  const el = document.getElementById('watchlistGrid');
+  if (!el) return;
+  if (watchlist.length === 0) {
+    el.innerHTML = `<div class="watchlist-empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-muted)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      <p>Your watchlist is empty.</p>
+      <p style="font-size:.82rem;color:var(--text-muted)">Search for a stock and click "Add to Watchlist" to track it here.</p>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="stocks-grid">
+    ${watchlist.map(w => `
+      <div class="stock-card" onclick="loadStock('${w.symbol}')">
+        <div class="stock-card-header">
+          <div>
+            <div class="stock-card-name">${w.name}</div>
+            <div class="stock-card-symbol">${cleanSymbol(w.symbol)}</div>
+          </div>
+          <button onclick="event.stopPropagation();removeFromWatchlist('${w.symbol}')" class="watchlist-remove-btn" title="Remove">✕</button>
+        </div>
+        <div style="color:var(--text-muted);font-size:.8rem;margin-top:8px">Click to analyse →</div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function removeFromWatchlist(symbol) {
+  watchlist = watchlist.filter(w => w.symbol !== symbol);
+  localStorage.setItem('sp_watchlist', JSON.stringify(watchlist));
+  updateWatchlistCount();
+  renderWatchlistPanel();
+}
+
+// ── Price Alerts ──────────────────────────────────────────────────────────────
+function toggleAlertsPanel() {
+  const panel = document.getElementById('alertsPanel');
+  if (!panel) return;
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) renderAlertsList();
+}
+
+function addAlert() {
+  if (!currentStockData) return;
+  const dir   = document.getElementById('alertDir')?.value;
+  const price = parseFloat(document.getElementById('alertPrice')?.value);
+  if (!price || isNaN(price)) { alert('Please enter a valid price.'); return; }
+  priceAlerts.push({ symbol: currentStockData.symbol, name: currentStockData.name, dir, price, id: Date.now() });
+  localStorage.setItem('sp_alerts', JSON.stringify(priceAlerts));
+  document.getElementById('alertPrice').value = '';
+  renderAlertsList();
+}
+
+function deleteAlert(id) {
+  priceAlerts = priceAlerts.filter(a => a.id !== id);
+  localStorage.setItem('sp_alerts', JSON.stringify(priceAlerts));
+  renderAlertsList();
+}
+
+function renderAlertsList() {
+  const el = document.getElementById('alertsList');
+  if (!el) return;
+  const mine = currentStockData ? priceAlerts.filter(a => a.symbol === currentStockData.symbol) : priceAlerts;
+  if (mine.length === 0) { el.innerHTML = '<p style="color:var(--text-muted);font-size:.82rem;padding:8px 0">No alerts set for this stock.</p>'; return; }
+  el.innerHTML = mine.map(a => `
+    <div class="alert-item">
+      <span class="alert-item-dir ${a.dir === 'above' ? 'positive' : 'negative'}">${a.dir === 'above' ? '▲ Above' : '▼ Below'}</span>
+      <span class="alert-item-price">₹${a.price.toFixed(2)}</span>
+      <button class="alert-delete-btn" onclick="deleteAlert(${a.id})">✕</button>
+    </div>`).join('');
+}
+
+function startAlertChecker() {
+  setInterval(async () => {
+    if (!priceAlerts.length) return;
+    const symbols = [...new Set(priceAlerts.map(a => a.symbol))];
+    try {
+      const res  = await fetchWithTimeout('/api/popular', 30_000);
+      const data = await res.json();
+      const map  = Object.fromEntries(data.map(s => [s.symbol, s.price]));
+      priceAlerts.forEach(alert => {
+        const cur = map[alert.symbol];
+        if (!cur) return;
+        const triggered = alert.dir === 'above' ? cur >= alert.price : cur <= alert.price;
+        if (triggered && Notification.permission === 'granted') {
+          new Notification(`StockPulse Alert: ${cleanSymbol(alert.symbol)}`, {
+            body: `${alert.name} is now ₹${cur} (${alert.dir} ₹${alert.price})`,
+            icon: '/favicon.ico',
+          });
+        }
+      });
+    } catch { /* silent */ }
+  }, 60_000);
+
+  if (Notification.permission === 'default') Notification.requestPermission();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -383,10 +567,16 @@ function showLanding() {
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderStockView(data) {
   renderStockHeader(data);
+  updateWatchlistBtn(data.symbol);
+  renderAlertsList();
   renderSignal(data);
+  renderAISummary(data);
+  renderMultiTimeframe(data);
   renderInvestorScores(data);
   renderChart(data, 'line');
   renderIndicators(data);
+  renderCandlestickPatterns(data);
+  renderFibonacci(data);
   renderTargets(data);
   renderReasons(data);
   loadNewsSection(data.symbol, data.name);
@@ -523,6 +713,144 @@ function renderInvestorScores(data) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AI SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderAISummary(data) {
+  const el = document.getElementById('aiSummarySection');
+  if (!el || !data.aiSummary) return;
+  const cls = getSignalClass(data.analysis.signal);
+  el.innerHTML = `
+    <div class="ai-summary-card">
+      <div class="ai-summary-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <h3>AI ANALYSIS SUMMARY</h3>
+        <div class="ai-summary-verdict ${cls}">${data.analysis.signal}</div>
+      </div>
+      <p class="ai-summary-text">${data.aiSummary}</p>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTI-TIMEFRAME ANALYSIS
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderMultiTimeframe(data) {
+  const el = document.getElementById('timeframeSection');
+  if (!el) return;
+  const daily  = { label: 'Daily',  signal: data.analysis.signal,           strength: data.analysis.strength };
+  const weekly = data.weeklyAnalysis ? { label: 'Weekly', signal: data.weeklyAnalysis.signal, strength: data.weeklyAnalysis.strength, rsi: data.weeklyAnalysis.rsi } : null;
+
+  const allBuy  = weekly && daily.signal.includes('BUY')  && weekly.signal.includes('BUY');
+  const allSell = weekly && daily.signal.includes('SELL') && weekly.signal.includes('SELL');
+  const confluenceText = !weekly ? 'Weekly data unavailable'
+    : allBuy  ? '✅ Multi-timeframe confluence — Both Daily & Weekly are BULLISH'
+    : allSell ? '⚠️ Multi-timeframe confluence — Both Daily & Weekly are BEARISH'
+    : '⏸ Timeframes diverging — Wait for alignment before entering';
+  const confluenceCls = allBuy ? 'buy' : allSell ? 'sell' : 'hold';
+
+  const tfCard = (tf) => {
+    const cls = getSignalClass(tf.signal);
+    return `<div class="timeframe-card">
+      <div class="timeframe-label">${tf.label}</div>
+      <div class="timeframe-signal ${cls}">${tf.signal}</div>
+      <div class="timeframe-strength">Strength: ${tf.strength}%</div>
+      ${tf.rsi != null ? `<div class="timeframe-strength">RSI: ${tf.rsi}</div>` : ''}
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="timeframe-section">
+      <div class="card-header">
+        <h3 class="section-title" style="margin:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          MULTI-TIMEFRAME ANALYSIS
+        </h3>
+      </div>
+      <div class="timeframe-grid">
+        ${tfCard(daily)}
+        ${weekly ? tfCard(weekly) : ''}
+      </div>
+      <div class="confluence-badge ${confluenceCls}">${confluenceText}</div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CANDLESTICK PATTERNS
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderCandlestickPatterns(data) {
+  const el = document.getElementById('patternsSection');
+  if (!el) return;
+  const patterns = data.patterns || [];
+  if (patterns.length === 0) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `
+    <div class="patterns-section">
+      <div class="card-header">
+        <h3 class="section-title" style="margin:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="17" y="5" width="4" height="16"/></svg>
+          CANDLESTICK PATTERNS DETECTED
+        </h3>
+      </div>
+      <div class="patterns-grid">
+        ${patterns.map(p => `
+          <div class="pattern-card ${p.type}">
+            <div class="pattern-top">
+              <span class="pattern-name">${p.name}</span>
+              <span class="pattern-type-badge ${p.type}">${p.type.toUpperCase()}</span>
+            </div>
+            <div class="pattern-signal">${p.signal}</div>
+            <div class="pattern-desc">${p.desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIBONACCI RETRACEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderFibonacci(data) {
+  const el = document.getElementById('fibonacciSection');
+  if (!el || !data.fibonacci) return;
+  const fib = data.fibonacci;
+  const cur = data.price;
+
+  const levels = [
+    { label: '0% (High)',   price: fib.high,     key: 'high' },
+    { label: '23.6%',       price: fib.level236, key: 'l236' },
+    { label: '38.2%',       price: fib.level382, key: 'l382' },
+    { label: '50.0%',       price: fib.level500, key: 'l500' },
+    { label: '61.8% (Golden)', price: fib.level618, key: 'l618' },
+    { label: '78.6%',       price: fib.level786, key: 'l786' },
+    { label: '100% (Low)',  price: fib.low,      key: 'low' },
+  ];
+
+  // Find nearest level
+  const nearest = levels.reduce((a, b) => Math.abs(b.price - cur) < Math.abs(a.price - cur) ? b : a);
+
+  el.innerHTML = `
+    <div class="fibonacci-section">
+      <div class="card-header">
+        <h3 class="section-title" style="margin:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          FIBONACCI RETRACEMENT <span style="font-size:.75rem;color:var(--text-muted);font-family:var(--font-body);font-weight:400">(60-day)</span>
+        </h3>
+        <span style="font-size:.75rem;color:var(--text-muted)">Current ₹${formatNumber(cur)} near <strong style="color:var(--primary)">${nearest.label}</strong></span>
+      </div>
+      <div class="fib-table">
+        ${levels.map(l => {
+          const isCurrent = l.key === nearest.key;
+          const pct = ((l.price - fib.low) / (fib.high - fib.low) * 100).toFixed(0);
+          return `<div class="fib-row ${isCurrent ? 'fib-current' : ''}">
+            <span class="fib-level">${l.label}</span>
+            <div class="fib-bar-wrap"><div class="fib-bar" style="width:${pct}%"></div></div>
+            <span class="fib-price ${cur > l.price ? 'positive' : 'negative'}">₹${formatNumber(l.price)}</span>
+            ${isCurrent ? '<span class="fib-current-marker">◄ Current</span>' : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // CHART
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderChart(data, type) {
@@ -536,12 +864,12 @@ function renderChart(data, type) {
 
   if (type === 'line') {
     const grad = ctx.createLinearGradient(0, 0, 0, 360);
-    grad.addColorStop(0,   'rgba(0,240,255,.18)');
-    grad.addColorStop(0.5, 'rgba(0,240,255,.05)');
-    grad.addColorStop(1,   'rgba(0,240,255,0)');
+    grad.addColorStop(0,   'rgba(83,103,255,.25)');
+    grad.addColorStop(0.5, 'rgba(83,103,255,.06)');
+    grad.addColorStop(1,   'rgba(83,103,255,0)');
     currentChart = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: [{ label: 'Price', data: closes, borderColor: '#00f0ff', borderWidth: 2.5, backgroundColor: grad, fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 7, pointHoverBackgroundColor: '#00f0ff', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
+      data: { labels, datasets: [{ label: 'Price', data: closes, borderColor: '#5367FF', borderWidth: 2.5, backgroundColor: grad, fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 7, pointHoverBackgroundColor: '#5367FF', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
       options: chartOptions(),
     });
   } else {
@@ -561,7 +889,7 @@ function chartOptions() {
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: false },
-      tooltip: { backgroundColor: 'rgba(13,21,40,.95)', titleColor: '#00f0ff', bodyColor: '#e8eaf6', borderColor: '#1a2545', borderWidth: 1, padding: 14, cornerRadius: 10, titleFont: { family: 'Orbitron', size: 10 }, bodyFont: { family: 'Space Grotesk', size: 13 }, callbacks: { label: (ctx) => `₹${ctx.parsed.y?.toFixed(2)}` } },
+      tooltip: { backgroundColor: 'rgba(15,17,35,.97)', titleColor: '#5367FF', bodyColor: '#e8eaf6', borderColor: '#252742', borderWidth: 1, padding: 14, cornerRadius: 10, titleFont: { family: 'Inter', size: 11 }, bodyFont: { family: 'Inter', size: 13 }, callbacks: { label: (ctx) => `₹${ctx.parsed.y?.toFixed(2)}` } },
     },
     scales: {
       x: { grid: { color: 'rgba(26,37,69,.5)', drawBorder: false }, ticks: { color: '#5a6380', font: { size: 10 }, maxTicksLimit: 10 } },
@@ -609,7 +937,19 @@ function renderIndicators(data) {
       <div class="indicator-name">VOLUME RATIO</div>
       <div class="indicator-value" style="color:${ind.volumeRatio > 1.5 ? 'var(--orange)' : ind.volumeRatio < 0.5 ? 'var(--red)' : 'var(--text-primary)'}">${ind.volumeRatio}x</div>
       <div class="indicator-sub">${ind.volumeRatio > 1.5 ? 'High Volume Activity' : ind.volumeRatio < 0.5 ? 'Low Volume' : 'Normal Volume'}</div>
-    </div>`;
+    </div>
+    ${ind.stochastic ? `<div class="indicator-item">
+      <div class="indicator-name">STOCHASTIC (14,3)</div>
+      <div class="indicator-value" style="color:${ind.stochastic.k < 20 ? 'var(--green)' : ind.stochastic.k > 80 ? 'var(--red)' : 'var(--text-primary)'}">%K ${ind.stochastic.k}</div>
+      <div class="indicator-sub">%D ${ind.stochastic.d} · ${ind.stochastic.k < 20 ? 'Oversold — Buy Zone' : ind.stochastic.k > 80 ? 'Overbought — Sell Zone' : 'Neutral'}</div>
+      <div class="indicator-bar"><div class="indicator-bar-fill" style="width:${ind.stochastic.k}%;background:${ind.stochastic.k < 20 ? 'var(--green)' : ind.stochastic.k > 80 ? 'var(--red)' : 'var(--primary)'}"></div></div>
+    </div>` : ''}
+    ${ind.adx != null ? `<div class="indicator-item">
+      <div class="indicator-name">ADX (14) — Trend Strength</div>
+      <div class="indicator-value" style="color:${ind.adx > 25 ? 'var(--green)' : 'var(--orange)'}">${ind.adx}</div>
+      <div class="indicator-sub">${ind.adx > 40 ? 'Very Strong Trend' : ind.adx > 25 ? 'Strong Trend — Signals Reliable' : ind.adx > 15 ? 'Weak Trend — Use Caution' : 'No Clear Trend'}</div>
+      <div class="indicator-bar"><div class="indicator-bar-fill" style="width:${Math.min(ind.adx * 2, 100)}%;background:${ind.adx > 25 ? 'var(--green)' : 'var(--orange)'}"></div></div>
+    </div>` : ''}`;
 }
 
 function renderTargets(data) {

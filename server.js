@@ -22,6 +22,17 @@ const POPULAR_STOCKS = [
 ];
 const INDICES = ['^NSEI', '^BSESN', '^NSEBANK'];
 
+const SECTORS = {
+  Banking:  ['HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'KOTAKBANK.NS', 'AXISBANK.NS'],
+  IT:       ['TCS.NS', 'INFY.NS', 'WIPRO.NS'],
+  Consumer: ['HINDUNILVR.NS', 'ITC.NS', 'TITAN.NS', 'ASIANPAINT.NS'],
+  Auto:     ['TATAMOTORS.NS', 'MARUTI.NS'],
+  Energy:   ['RELIANCE.NS', 'ADANIENT.NS'],
+  Pharma:   ['SUNPHARMA.NS'],
+  Telecom:  ['BHARTIARTL.NS'],
+  Finance:  ['BAJFINANCE.NS', 'LT.NS'],
+};
+
 const YF_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
@@ -117,6 +128,8 @@ function analyzeStock(history) {
   const sma20Arr = SMA.calculate({ values: closes, period: 20 });
   const sma50Arr = SMA.calculate({ values: closes, period: 50 });
   const bbArr    = BollingerBands.calculate({ values: closes, period: 20, stdDev: 2 });
+  const stochArr = Stochastic.calculate({ high: highs, low: lows, close: closes, period: 14, signalPeriod: 3 });
+  const adxArr   = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
 
   const last = arr => arr.length ? arr[arr.length - 1] : null;
 
@@ -126,6 +139,8 @@ function analyzeStock(history) {
   const currentSMA50 = last(sma50Arr) ?? closes[closes.length - 1];
   const currentBB    = last(bbArr);
   const currentPrice = closes[closes.length - 1];
+  const currentStoch = stochArr.length ? stochArr[stochArr.length - 1] : null;
+  const currentADX   = adxArr.length   ? adxArr[adxArr.length - 1]   : null;
 
   // Volume
   const recentVols   = volumes.slice(-20);
@@ -162,6 +177,16 @@ function analyzeStock(history) {
   if (currentBB) {
     if (currentPrice <= currentBB.lower) { buySignals  += 2; reasons.push('Price at Lower Bollinger Band'); }
     else if (currentPrice >= currentBB.upper) { sellSignals += 2; reasons.push('Price at Upper Bollinger Band'); }
+  }
+
+  if (currentStoch) {
+    if (currentStoch.k < 20)      { buySignals  += 1; reasons.push('Stochastic Oversold (<20)'); }
+    else if (currentStoch.k > 80) { sellSignals += 1; reasons.push('Stochastic Overbought (>80)'); }
+  }
+  // ADX filters weak trends — only boost confidence when ADX > 25
+  if (currentADX?.adx > 25) {
+    if (buySignals > sellSignals)  { buySignals  += 1; reasons.push('ADX Trend Strong (>25) — Momentum Confirmed'); }
+    else if (sellSignals > buySignals) { sellSignals += 1; reasons.push('ADX Trend Strong (>25) — Bearish Momentum'); }
   }
 
   if (volumeRatio > 1.5) {
@@ -210,6 +235,8 @@ function analyzeStock(history) {
         lower:  round2(currentBB.lower),
       } : null,
       volumeRatio: round2(volumeRatio),
+      stochastic: currentStoch ? { k: round2(currentStoch.k), d: round2(currentStoch.d) } : null,
+      adx: currentADX ? round2(currentADX.adx) : null,
     },
     targets: {
       target1:    round2(pivot + (pivot - support)),
@@ -483,16 +510,160 @@ async function fetchStockNews(symbol, companyName) {
   return items;
 }
 
+// ── Candlestick Pattern Detection ─────────────────────────────────────────────
+function detectCandlestickPatterns(history) {
+  const candles = history.slice(-10);
+  const found = [];
+
+  for (let i = 2; i < candles.length; i++) {
+    const c1  = candles[i - 2];
+    const c2  = candles[i - 1];
+    const cur = candles[i];
+    if (!cur.open || !cur.close || !cur.high || !cur.low) continue;
+
+    const body    = Math.abs(cur.close - cur.open);
+    const range   = (cur.high - cur.low) || 0.01;
+    const upper   = cur.high - Math.max(cur.open, cur.close);
+    const lower   = Math.min(cur.open, cur.close) - cur.low;
+    const isBull  = cur.close >= cur.open;
+
+    if (body / range < 0.10)
+      found.push({ name: 'Doji', type: 'neutral', signal: 'WATCH', desc: 'Indecision candle — potential reversal ahead' });
+
+    if (lower > 2 * body && upper < body * 0.5 && isBull)
+      found.push({ name: 'Hammer', type: 'bullish', signal: 'BUY', desc: 'Bullish reversal — buyers absorbing selling pressure' });
+
+    if (upper > 2 * body && lower < body * 0.5 && !isBull)
+      found.push({ name: 'Shooting Star', type: 'bearish', signal: 'SELL', desc: 'Bearish reversal — selling pressure at highs' });
+
+    if (lower > 2 * body && upper < body * 0.5 && !isBull)
+      found.push({ name: 'Hanging Man', type: 'bearish', signal: 'SELL', desc: 'Bearish warning at highs — distribution possible' });
+
+    if (upper > 2 * body && lower < body * 0.5 && isBull)
+      found.push({ name: 'Inverted Hammer', type: 'bullish', signal: 'BUY', desc: 'Potential bullish reversal — watch for confirmation' });
+
+    if (c2.open && c2.close < c2.open && isBull && cur.close > c2.open && cur.open < c2.close)
+      found.push({ name: 'Bullish Engulfing', type: 'bullish', signal: 'STRONG BUY', desc: 'Strong bullish reversal — buyers fully in control' });
+
+    if (c2.open && c2.close > c2.open && !isBull && cur.close < c2.open && cur.open > c2.close)
+      found.push({ name: 'Bearish Engulfing', type: 'bearish', signal: 'STRONG SELL', desc: 'Strong bearish reversal — sellers fully in control' });
+
+    if (c1.open && c1.close < c1.open &&
+        Math.abs(c2.close - c2.open) < Math.abs(c1.close - c1.open) * 0.4 &&
+        isBull && cur.close > c1.open + (c1.close - c1.open) * 0.5)
+      found.push({ name: 'Morning Star', type: 'bullish', signal: 'STRONG BUY', desc: '3-candle bullish reversal — high-reliability pattern' });
+
+    if (c1.open && c1.close > c1.open &&
+        Math.abs(c2.close - c2.open) < Math.abs(c1.close - c1.open) * 0.4 &&
+        !isBull && cur.close < c1.close - (c1.close - c1.open) * 0.5)
+      found.push({ name: 'Evening Star', type: 'bearish', signal: 'STRONG SELL', desc: '3-candle bearish reversal — high-reliability pattern' });
+  }
+
+  const seen = new Set();
+  return found.filter(p => seen.has(p.name) ? false : (seen.add(p.name), true)).slice(0, 4);
+}
+
+// ── Fibonacci Retracement ─────────────────────────────────────────────────────
+function computeFibonacci(history) {
+  const slice = history.slice(-60);
+  const hs = slice.map(d => d.high).filter(Boolean);
+  const ls = slice.map(d => d.low).filter(Boolean);
+  if (!hs.length || !ls.length) return null;
+  const high = Math.max(...hs);
+  const low  = Math.min(...ls);
+  const diff = high - low;
+  return {
+    high:     round2(high),
+    low:      round2(low),
+    level236: round2(high - diff * 0.236),
+    level382: round2(high - diff * 0.382),
+    level500: round2(high - diff * 0.500),
+    level618: round2(high - diff * 0.618),
+    level786: round2(high - diff * 0.786),
+  };
+}
+
+// ── AI Summary ────────────────────────────────────────────────────────────────
+function generateAISummary({ quote, analysis, patterns, weeklySignal }) {
+  const { signal, indicators, targets, investorScores } = analysis;
+  const { buffett, jhunjhunwala } = investorScores;
+  const name = (quote.name || cleanSymbol(quote.symbol)).split(' ').slice(0, 3).join(' ');
+  const price = round2(quote.price);
+  const dir   = quote.change >= 0 ? 'up' : 'down';
+  const parts = [];
+
+  parts.push(`${name} is trading at ₹${price}, ${dir} ${Math.abs(quote.changePercent || 0).toFixed(2)}% today.`);
+
+  if (indicators.rsi < 30)      parts.push(`RSI at ${indicators.rsi} is deeply oversold — a bounce is highly probable.`);
+  else if (indicators.rsi > 70) parts.push(`RSI at ${indicators.rsi} is overbought — expect profit booking soon.`);
+  else parts.push(`RSI at ${indicators.rsi} is in a ${indicators.rsi > 50 ? 'mildly bullish' : 'mildly bearish'} neutral zone.`);
+
+  parts.push(price > indicators.sma50
+    ? 'Price is above the 50-day moving average, confirming a medium-term uptrend.'
+    : 'Price is below the 50-day moving average — medium-term trend remains bearish.');
+
+  if (indicators.macd?.histogram > 0) parts.push('MACD histogram is positive — bullish momentum is building.');
+  else parts.push('MACD histogram is negative — bearish momentum is dominant.');
+
+  if (indicators.adx && indicators.adx > 25) parts.push(`ADX at ${indicators.adx} confirms a strong trend — signals are more reliable.`);
+
+  if (buffett.score >= 65 && jhunjhunwala.score >= 65)
+    parts.push(`Both investor models are bullish: Buffett value score ${buffett.score}/100, RJ momentum score ${jhunjhunwala.score}/100.`);
+  else if (buffett.score >= 65)
+    parts.push(`Buffett value model (${buffett.score}/100) sees a good entry, but RJ momentum model suggests waiting.`);
+  else if (jhunjhunwala.score >= 65)
+    parts.push(`RJ momentum model (${jhunjhunwala.score}/100) is positive, but value investors may seek a lower entry.`);
+  else
+    parts.push(`Both investor models are cautious at current levels (Buffett: ${buffett.score}/100, RJ: ${jhunjhunwala.score}/100).`);
+
+  const bullPat = patterns.find(p => p.type === 'bullish');
+  const bearPat = patterns.find(p => p.type === 'bearish');
+  if (bullPat)  parts.push(`Chart pattern: ${bullPat.name} detected — ${bullPat.desc.toLowerCase()}`);
+  else if (bearPat) parts.push(`Chart pattern: ${bearPat.name} detected — ${bearPat.desc.toLowerCase()}`);
+
+  if (weeklySignal) {
+    if (signal.includes('BUY') && weeklySignal.includes('BUY'))
+      parts.push('Multi-timeframe confluence: both daily and weekly charts are bullish — strong conviction.');
+    else if (signal.includes('SELL') && weeklySignal.includes('SELL'))
+      parts.push('Multi-timeframe: both daily and weekly are bearish — high conviction sell.');
+    else
+      parts.push('Daily and weekly timeframes are diverging — wait for alignment before entering.');
+  }
+
+  parts.push(`Key target: ₹${targets.target1} | Stop loss: ₹${targets.stopLoss}. Verdict: ${signal}.`);
+  return parts.join(' ');
+}
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/api/stock/:symbol', async (req, res) => {
   try {
     let symbol = req.params.symbol.toUpperCase();
     if (!symbol.endsWith('.NS') && !symbol.endsWith('.BO')) symbol += '.NS';
 
-    const { quote, history } = await fetchChartData(symbol, '6mo', '1d');
-    const analysis = analyzeStock(history);
+    const [dailyResult, weeklyResult] = await Promise.allSettled([
+      fetchChartData(symbol, '6mo', '1d'),
+      fetchChartData(symbol, '1y',  '1wk'),
+    ]);
 
-    res.json({ ...quote, analysis, chartData: history.slice(-60) });
+    if (dailyResult.status === 'rejected') throw dailyResult.reason;
+    const { quote, history } = dailyResult.value;
+
+    const analysis  = analyzeStock(history);
+    const patterns  = detectCandlestickPatterns(history);
+    const fibonacci = computeFibonacci(history);
+
+    let weeklyAnalysis = null;
+    if (weeklyResult.status === 'fulfilled' && weeklyResult.value.history.length >= 26) {
+      const wa = analyzeStock(weeklyResult.value.history);
+      weeklyAnalysis = { signal: wa.signal, strength: wa.strength, rsi: wa.indicators.rsi };
+    }
+
+    const aiSummary = generateAISummary({
+      quote, analysis, patterns,
+      weeklySignal: weeklyAnalysis?.signal || null,
+    });
+
+    res.json({ ...quote, analysis, chartData: history.slice(-60), patterns, fibonacci, weeklyAnalysis, aiSummary });
   } catch (err) {
     console.error('Stock error:', err.message);
     res.status(500).json({ error: 'Failed to fetch stock data: ' + err.message });
@@ -530,6 +701,27 @@ app.get('/api/indices', async (req, res) => {
   } catch (err) {
     console.error('Indices error:', err.message);
     res.status(500).json({ error: 'Failed to fetch indices' });
+  }
+});
+
+app.get('/api/sectors', async (req, res) => {
+  try {
+    const allSymbols = Object.values(SECTORS).flat();
+    const quotes = await fetchQuotesBatch(allSymbols);
+    const quoteMap = Object.fromEntries(quotes.map(q => [q.symbol, q]));
+
+    const result = Object.entries(SECTORS).map(([sector, symbols]) => {
+      const stocks   = symbols.map(sym => quoteMap[sym]).filter(Boolean);
+      const avgChange = stocks.length
+        ? round2(stocks.reduce((s, q) => s + (q.changePercent || 0), 0) / stocks.length)
+        : 0;
+      return { sector, avgChange, stocks: stocks.map(s => ({ symbol: s.symbol, name: s.name, price: s.price, changePercent: s.changePercent })) };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Sectors error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch sector data' });
   }
 });
 
