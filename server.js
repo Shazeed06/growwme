@@ -3,11 +3,17 @@ const cors = require('cors');
 const axios = require('axios');
 const { RSI, MACD, SMA, EMA, BollingerBands, Stochastic, ADX } = require('technicalindicators');
 const path = require('path');
+const compression = require('compression');
 
 const app = express();
 app.use(cors());
+app.use(compression());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1d',
+  etag: true,
+  lastModified: true,
+}));
 
 // ── Utility ──────────────────────────────────────────────────────────────────
 const round2 = (n) => +Number(n).toFixed(2);
@@ -745,12 +751,32 @@ function generateAISummary({ quote, analysis, patterns, weeklySignal }) {
 
 // ── Buy Today Cache ───────────────────────────────────────────────────────────
 let buyTodayCache = { data: null, ts: 0 };
+const apiCache = new Map(); // symbol → { data, ts }
+const CACHE_TTL = {
+  stock:   5 * 60 * 1000,   // 5 min
+  popular: 5 * 60 * 1000,   // 5 min
+  indices: 2 * 60 * 1000,   // 2 min
+  sectors: 5 * 60 * 1000,   // 5 min
+  news:    10 * 60 * 1000,  // 10 min
+};
+function cacheGet(key) {
+  const entry = apiCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > entry.ttl) { apiCache.delete(key); return null; }
+  return entry.data;
+}
+function cacheSet(key, data, ttl) {
+  apiCache.set(key, { data, ts: Date.now(), ttl });
+}
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/api/stock/:symbol', async (req, res) => {
   try {
     let symbol = req.params.symbol.toUpperCase();
     if (!symbol.endsWith('.NS') && !symbol.endsWith('.BO')) symbol += '.NS';
+
+    const cached = cacheGet('stock:' + symbol);
+    if (cached) return res.json(cached);
 
     const [dailyResult, weeklyResult] = await Promise.allSettled([
       fetchChartData(symbol, '6mo', '1d'),
@@ -775,7 +801,9 @@ app.get('/api/stock/:symbol', async (req, res) => {
       weeklySignal: weeklyAnalysis?.signal || null,
     });
 
-    res.json({ ...quote, analysis, chartData: history.slice(-60), patterns, fibonacci, weeklyAnalysis, aiSummary });
+    const result = { ...quote, analysis, chartData: history.slice(-60), patterns, fibonacci, weeklyAnalysis, aiSummary };
+    cacheSet('stock:' + symbol, result, CACHE_TTL.stock);
+    res.json(result);
   } catch (err) {
     console.error('Stock error:', err.message);
     res.status(500).json({ error: 'Failed to fetch stock data: ' + err.message });
@@ -784,7 +812,11 @@ app.get('/api/stock/:symbol', async (req, res) => {
 
 app.get('/api/popular', async (req, res) => {
   try {
-    res.json(await fetchQuotesBatch(POPULAR_STOCKS));
+    const cached = cacheGet('popular');
+    if (cached) return res.json(cached);
+    const data = await fetchQuotesBatch(POPULAR_STOCKS);
+    cacheSet('popular', data, CACHE_TTL.popular);
+    res.json(data);
   } catch (err) {
     console.error('Popular error:', err.message);
     res.status(500).json({ error: 'Failed to fetch popular stocks' });
@@ -809,7 +841,11 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/indices', async (req, res) => {
   try {
-    res.json(await fetchQuotesBatch(INDICES));
+    const cached = cacheGet('indices');
+    if (cached) return res.json(cached);
+    const data = await fetchQuotesBatch(INDICES);
+    cacheSet('indices', data, CACHE_TTL.indices);
+    res.json(data);
   } catch (err) {
     console.error('Indices error:', err.message);
     res.status(500).json({ error: 'Failed to fetch indices' });
@@ -818,6 +854,9 @@ app.get('/api/indices', async (req, res) => {
 
 app.get('/api/sectors', async (req, res) => {
   try {
+    const cached = cacheGet('sectors');
+    if (cached) return res.json(cached);
+
     const allSymbols = Object.values(SECTORS).flat();
     const quotes = await fetchQuotesBatch(allSymbols);
     const quoteMap = Object.fromEntries(quotes.map(q => [q.symbol, q]));
@@ -830,6 +869,7 @@ app.get('/api/sectors', async (req, res) => {
       return { sector, avgChange, stocks: stocks.map(s => ({ symbol: s.symbol, name: s.name, price: s.price, changePercent: s.changePercent })) };
     });
 
+    cacheSet('sectors', result, CACHE_TTL.sectors);
     res.json(result);
   } catch (err) {
     console.error('Sectors error:', err.message);
@@ -903,15 +943,26 @@ app.get('/api/news/:symbol', async (req, res) => {
     if (!symbol.endsWith('.NS') && !symbol.endsWith('.BO')) symbol += '.NS';
     const companyName = req.query.name || '';
 
+    const cached = cacheGet('news:' + symbol);
+    if (cached) return res.json(cached);
+
     const news = await fetchStockNews(symbol, companyName);
 
-    const positiveCount = news.filter(n => n.sentiment === 'positive').length;
-    const negativeCount = news.filter(n => n.sentiment === 'negative').length;
+    const { positiveCount, negativeCount } = news.reduce(
+      (acc, n) => {
+        if (n.sentiment === 'positive') acc.positiveCount++;
+        else if (n.sentiment === 'negative') acc.negativeCount++;
+        return acc;
+      },
+      { positiveCount: 0, negativeCount: 0 }
+    );
     const overallSentiment = positiveCount > negativeCount ? 'positive'
       : negativeCount > positiveCount ? 'negative' : 'neutral';
     const newsSignal = positiveCount >= 3 ? 'BUY' : negativeCount >= 3 ? 'AVOID' : 'NEUTRAL';
 
-    res.json({ news, overallSentiment, newsSignal, positiveCount, negativeCount });
+    const result = { news, overallSentiment, newsSignal, positiveCount, negativeCount };
+    cacheSet('news:' + symbol, result, CACHE_TTL.news);
+    res.json(result);
   } catch (err) {
     console.error('News error:', err.message);
     res.status(500).json({ error: 'Failed to fetch news: ' + err.message });
@@ -919,4 +970,4 @@ app.get('/api/news/:symbol', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`StockPulse AI → http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`GrowwMe → http://localhost:${PORT}`));

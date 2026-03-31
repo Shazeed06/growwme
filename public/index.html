@@ -8,6 +8,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#5367FF">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GrowwMe">
 </head>
 <body>
   <canvas id="particleCanvas"></canvas>
@@ -86,6 +91,16 @@
         <span>MARKET CLOSED</span>
       </div>
       <div class="live-time" id="liveTime"></div>
+
+      <!-- PWA Install -->
+      <button class="pwa-install-btn hidden" id="pwaInstallBtn" onclick="installPWA()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Install App
+      </button>
 
       <!-- Theme Toggle -->
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme">
@@ -353,6 +368,29 @@
     </div>
   </footer>
 
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+    // PWA install prompt
+    let _pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      _pwaPrompt = e;
+      document.getElementById('pwaInstallBtn')?.classList.remove('hidden');
+    });
+    window.addEventListener('appinstalled', () => {
+      document.getElementById('pwaInstallBtn')?.classList.add('hidden');
+      _pwaPrompt = null;
+    });
+    function installPWA() {
+      if (!_pwaPrompt) return;
+      _pwaPrompt.prompt();
+      _pwaPrompt.userChoice.then(() => { _pwaPrompt = null; });
+    }
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

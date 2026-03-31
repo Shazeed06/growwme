@@ -167,6 +167,29 @@ let watchlist        = JSON.parse(localStorage.getItem('sp_watchlist') || '[]');
 let priceAlerts      = JSON.parse(localStorage.getItem('sp_alerts')    || '[]');
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TOAST NOTIFICATION SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+function showToast(message, type = 'info', duration = 3500) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  const icons = { success: '✓', error: '✕', info: 'ℹ', warning: '⚠' };
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-msg">${message}</span>`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  }, duration);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -389,6 +412,8 @@ async function loadStock(symbol) {
     if (data.error) throw new Error(data.error);
     currentStockData = data;
     renderStockView(data);
+    document.getElementById('landingView').classList.add('view-fade-out');
+    await new Promise(r => setTimeout(r, 180));
     document.getElementById('landingView').classList.add('hidden');
     document.getElementById('stockView').classList.remove('hidden');
     // Clear active nav — we're in stock detail, no nav item is "active"
@@ -396,7 +421,7 @@ async function loadStock(symbol) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     console.error('loadStock failed:', err);
-    alert('Stock data fetch failed — please try again.');
+    showToast('Stock data fetch failed — please try again.', 'error');
   } finally {
     showLoading(false);
   }
@@ -417,7 +442,13 @@ function setActiveNav(id) {
 }
 
 // ── Top-level Nav Click (header navbar) ──────────────────────────────────────
-function navClick(target) {
+async function navClick(target) {
+  // Fade out stockView if it's visible
+  const sv = document.getElementById('stockView');
+  if (!sv.classList.contains('hidden')) {
+    sv.classList.add('view-fade-out');
+    await new Promise(r => setTimeout(r, 180));
+  }
   // Always show landing view, destroy chart if open
   document.getElementById('stockView')?.classList.add('hidden');
   document.getElementById('landingView')?.classList.remove('hidden');
@@ -612,8 +643,13 @@ function toggleWatchlist() {
   if (!currentStockData) return;
   const { symbol, name } = currentStockData;
   const idx = watchlist.findIndex(w => w.symbol === symbol);
-  if (idx >= 0) watchlist.splice(idx, 1);
-  else watchlist.push({ symbol, name });
+  if (idx >= 0) {
+    watchlist.splice(idx, 1);
+    showToast(`${name} removed from watchlist.`, 'info');
+  } else {
+    watchlist.push({ symbol, name });
+    showToast(`${name} added to watchlist!`, 'success');
+  }
   localStorage.setItem('sp_watchlist', JSON.stringify(watchlist));
   updateWatchlistBtn(symbol);
   updateWatchlistCount();
@@ -665,19 +701,26 @@ function removeFromWatchlist(symbol) {
 function toggleAlertsPanel() {
   const panel = document.getElementById('alertsPanel');
   if (!panel) return;
-  panel.classList.toggle('hidden');
-  if (!panel.classList.contains('hidden')) renderAlertsList();
+  if (panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden');
+    requestAnimationFrame(() => panel.classList.add('panel-open'));
+    renderAlertsList();
+  } else {
+    panel.classList.remove('panel-open');
+    panel.addEventListener('transitionend', () => panel.classList.add('hidden'), { once: true });
+  }
 }
 
 function addAlert() {
   if (!currentStockData) return;
   const dir   = document.getElementById('alertDir')?.value;
   const price = parseFloat(document.getElementById('alertPrice')?.value);
-  if (!price || isNaN(price)) { alert('Please enter a valid price.'); return; }
+  if (!price || isNaN(price)) { showToast('Please enter a valid price.', 'warning'); return; }
   priceAlerts.push({ symbol: currentStockData.symbol, name: currentStockData.name, dir, price, id: Date.now() });
   localStorage.setItem('sp_alerts', JSON.stringify(priceAlerts));
   document.getElementById('alertPrice').value = '';
   renderAlertsList();
+  showToast('Price alert set!', 'success');
 }
 
 function deleteAlert(id) {

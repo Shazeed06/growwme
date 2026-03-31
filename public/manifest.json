@@ -1,0 +1,40 @@
+{
+  "name": "GrowwMe — Indian Market Intelligence",
+  "short_name": "GrowwMe",
+  "description": "AI-powered real-time Indian stock market analysis with 11 legendary investor insights",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0C1A",
+  "theme_color": "#5367FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%230B0C1A'/><path d='M24 144L57.6 86.4L96 115.2L134.4 38.4L168 72' stroke='url(%23g)' stroke-width='14' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='168' cy='72' r='12' fill='%235367FF'/><defs><linearGradient id='g' x1='24' y1='144' x2='168' y2='38'><stop stop-color='%235367FF'/><stop offset='1' stop-color='%239747FF'/></linearGradient></defs></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230B0C1A'/><path d='M64 384L153.6 230.4L256 307.2L358.4 102.4L448 192' stroke='url(%23g)' stroke-width='36' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='448' cy='192' r='32' fill='%235367FF'/><defs><linearGradient id='g' x1='64' y1='384' x2='448' y2='102'><stop stop-color='%235367FF'/><stop offset='1' stop-color='%239747FF'/></linearGradient></defs></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "AI Picks",
+      "short_name": "AI Picks",
+      "description": "Today's AI stock picks",
+      "url": "/#aipicks"
+    },
+    {
+      "name": "My Watchlist",
+      "short_name": "Watchlist",
+      "description": "View your watchlist",
+      "url": "/#watchlist"
+    }
+  ]
+}
