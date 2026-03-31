@@ -27,7 +27,8 @@
       "Bash(curl -s \"http://localhost:3000/api/sectors\")",
       "Bash(curl -s \"http://localhost:3000/api/stock/TCS.NS\")",
       "Bash(cmd.exe /c \"taskkill /PID 23360 /F\")",
-      "Bash(cmd.exe /c \"taskkill /PID 23360 /F 2>&1 && echo KILLED || echo FAILED\")"
+      "Bash(cmd.exe /c \"taskkill /PID 23360 /F 2>&1 && echo KILLED || echo FAILED\")",
+      "Bash(node -e \"const{execSync}=require\\(''child_process''\\);try{execSync\\(''taskkill /F /IM node.exe'',{stdio:''pipe''}\\);console.log\\(''killed''\\);}catch\\(e\\){console.log\\(''none''\\);}\")"
     ]
   }
 }
