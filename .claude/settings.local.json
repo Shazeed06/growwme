@@ -18,7 +18,13 @@
       "Bash(curl -s \"http://localhost:3000/api/news/RELIANCE?name=Reliance+Industries\")",
       "Bash(npx kill-port:*)",
       "Bash(netstat -ano)",
-      "Bash(findstr :3000)"
+      "Bash(findstr :3000)",
+      "Bash(gh repo:*)",
+      "Bash(git config:*)",
+      "Bash(where.exe gh:*)",
+      "Bash(powershell -Command \"Get-Command gh -ErrorAction SilentlyContinue\")",
+      "Bash(curl -s \"http://localhost:3000/api/stock/TCS\")",
+      "Bash(curl -s \"http://localhost:3000/api/sectors\")"
     ]
   }
 }
