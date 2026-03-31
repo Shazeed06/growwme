@@ -735,7 +735,8 @@ function renderInvestorScores(data) {
   const el = document.getElementById('investorScores');
   if (!el || !scores) return;
 
-  const { consensus, metrics } = scores;
+  const consensus = scores.consensus || { score: 0, rating: 'N/A', buyCount: 0, totalInvestors: 11 };
+  const metrics   = scores.metrics   || {};
 
   // Legend: all 11 investors with icon + philosophy
   const LEGENDS = [
@@ -817,12 +818,12 @@ function renderInvestorScores(data) {
   const metricsHtml = `
     <div class="metrics-bar">
       ${[
-        ['52W Position',      metrics.pricePosition + '%',                               metrics.pricePosition > 60 ? 'positive' : metrics.pricePosition < 35 ? 'cyan' : ''],
-        ['Trend Consistency', metrics.trendConsistency + '%',                            metrics.trendConsistency > 60 ? 'positive' : 'negative'],
-        ['30D Return',        (metrics.returnPct30d > 0 ? '+' : '') + metrics.returnPct30d + '%', metrics.returnPct30d > 0 ? 'positive' : 'negative'],
-        ['Daily Volatility',  metrics.volatilityPct + '%',                               metrics.volatilityPct < 1.5 ? 'positive' : 'negative'],
-        ['Upside to Res.',    metrics.upsideToResistance + '%',                          'cyan'],
-        ['Above Support',     '+' + metrics.priceVsSupport + '%',                        'positive'],
+        ['52W Position',      (metrics.pricePosition ?? '—') + (metrics.pricePosition != null ? '%' : ''),      (metrics.pricePosition ?? 0) > 60 ? 'positive' : (metrics.pricePosition ?? 50) < 35 ? 'cyan' : ''],
+        ['Trend Consistency', (metrics.trendConsistency ?? '—') + (metrics.trendConsistency != null ? '%' : ''), (metrics.trendConsistency ?? 0) > 60 ? 'positive' : 'negative'],
+        ['30D Return',        metrics.returnPct30d != null ? ((metrics.returnPct30d > 0 ? '+' : '') + metrics.returnPct30d + '%') : '—', (metrics.returnPct30d ?? 0) > 0 ? 'positive' : 'negative'],
+        ['Daily Volatility',  (metrics.volatilityPct ?? '—') + (metrics.volatilityPct != null ? '%' : ''),       (metrics.volatilityPct ?? 99) < 1.5 ? 'positive' : 'negative'],
+        ['Upside to Res.',    metrics.upsideToResistance != null ? metrics.upsideToResistance + '%' : '—',       'cyan'],
+        ['Above Support',     metrics.priceVsSupport != null ? '+' + metrics.priceVsSupport + '%' : '—',         'positive'],
       ].map(([label, val, cls]) => `
         <div class="metric-chip">
           <div class="metric-chip-label">${label}</div>
