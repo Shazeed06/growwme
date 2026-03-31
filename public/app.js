@@ -386,6 +386,52 @@ function showLanding() {
   showTab(currentTab);
 }
 
+// ── Header Nav Active State ───────────────────────────────────────────────────
+function setActiveNav(id) {
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('nav-' + id);
+  if (el) el.classList.add('active');
+}
+
+// ── Top-level Nav Click (header navbar) ──────────────────────────────────────
+function navClick(target) {
+  switch (target) {
+    case 'dashboard':
+      setActiveNav('dashboard');
+      showLanding();
+      break;
+    case 'markets':
+      setActiveNav('markets');
+      showLanding();
+      showTab('stocks');
+      break;
+    case 'sectors':
+      setActiveNav('sectors');
+      showLanding();
+      showTab('sectors');
+      break;
+    case 'aipicks':
+      setActiveNav('aipicks');
+      showLanding();
+      setTimeout(() => {
+        document.getElementById('aiPicksSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+      break;
+    case 'watchlist':
+      setActiveNav('watchlist');
+      showLanding();
+      showTab('watchlist');
+      break;
+    default:
+      showLanding();
+  }
+}
+
+// Mobile nav toggle
+function toggleMobileNav() {
+  document.getElementById('headerNav')?.classList.toggle('mobile-open');
+}
+
 // ── Landing Tab Switcher ──────────────────────────────────────────────────────
 function showTab(tab) {
   currentTab = tab;
