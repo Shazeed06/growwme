@@ -24,7 +24,10 @@
       "Bash(where.exe gh:*)",
       "Bash(powershell -Command \"Get-Command gh -ErrorAction SilentlyContinue\")",
       "Bash(curl -s \"http://localhost:3000/api/stock/TCS\")",
-      "Bash(curl -s \"http://localhost:3000/api/sectors\")"
+      "Bash(curl -s \"http://localhost:3000/api/sectors\")",
+      "Bash(curl -s \"http://localhost:3000/api/stock/TCS.NS\")",
+      "Bash(cmd.exe /c \"taskkill /PID 23360 /F\")",
+      "Bash(cmd.exe /c \"taskkill /PID 23360 /F 2>&1 && echo KILLED || echo FAILED\")"
     ]
   }
 }
