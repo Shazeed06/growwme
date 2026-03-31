@@ -1,50 +1,77 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
-   StockPulse AI — Groww-Inspired Dark Theme
+   GrowwMe — Dark / Light Theme
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* ─── CSS VARIABLES ──────────────────────────────────────────────────────────── */
-:root {
-  /* Backgrounds */
+/* ─── DARK THEME (default) ───────────────────────────────────────────────────── */
+:root, [data-theme="dark"] {
   --bg-primary:    #0B0C1A;
   --bg-secondary:  #0F1120;
   --bg-card:       #151728;
   --bg-card-hover: #1C1E35;
-
-  /* Borders */
   --border:        #252742;
   --border-active: #5367FF44;
-
-  /* Text */
   --text-primary:  #FFFFFF;
   --text-secondary:#A0A3BD;
   --text-muted:    #6B6D8A;
-
-  /* Primary (Groww purple-blue) */
   --primary:       #5367FF;
   --primary-dim:   #5367FF33;
   --primary-light: #EEF0FF;
-
-  /* Semantic colors */
   --green:         #44C27F;
   --green-bg:      #44C27F15;
   --red:           #E65B4E;
   --red-bg:        #E65B4E15;
   --orange:        #FF9F1C;
-
-  /* Gradients */
   --gradient-main: linear-gradient(135deg, #5367FF, #9747FF);
   --gradient-buy:  linear-gradient(135deg, #44C27F, #00A86B);
   --gradient-sell: linear-gradient(135deg, #E65B4E, #CC2E21);
   --gradient-hold: linear-gradient(135deg, #FF9F1C, #F77F00);
-
-  /* Shadows */
   --shadow-card:   0 4px 24px rgba(0,0,0,0.4);
   --shadow-primary:0 8px 32px rgba(83,103,255,0.25);
-
-  /* Fonts */
+  --header-bg:     rgba(11,12,26,.95);
+  --particle-opacity: 1;
   --font-display:  'Orbitron', monospace;
   --font-body:     'Inter', 'Space Grotesk', sans-serif;
 }
+
+/* ─── LIGHT THEME ─────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-primary:    #F4F6FF;
+  --bg-secondary:  #ECEFFE;
+  --bg-card:       #FFFFFF;
+  --bg-card-hover: #F0F3FF;
+  --border:        #DDE0F0;
+  --border-active: #5367FF55;
+  --text-primary:  #1A1C3A;
+  --text-secondary:#4A4D72;
+  --text-muted:    #8890B0;
+  --primary:       #4356E8;
+  --primary-dim:   #4356E820;
+  --primary-light: #EEF0FF;
+  --green:         #2DA866;
+  --green-bg:      #2DA86615;
+  --red:           #D94438;
+  --red-bg:        #D9443815;
+  --orange:        #E08800;
+  --gradient-main: linear-gradient(135deg, #4356E8, #7C34E8);
+  --gradient-buy:  linear-gradient(135deg, #2DA866, #1E8A50);
+  --gradient-sell: linear-gradient(135deg, #D94438, #B52C22);
+  --gradient-hold: linear-gradient(135deg, #E08800, #C07000);
+  --shadow-card:   0 2px 16px rgba(67,86,232,0.10);
+  --shadow-primary:0 6px 24px rgba(67,86,232,0.20);
+  --header-bg:     rgba(244,246,255,.97);
+  --particle-opacity: 0;
+}
+
+/* In light mode: hide dark-only background effects */
+[data-theme="light"] #particleCanvas,
+[data-theme="light"] .bg-grid,
+[data-theme="light"] .bg-glow,
+[data-theme="light"] .scan-line { opacity:0; pointer-events:none; }
+
+/* Smooth theme transition */
+*, *::before, *::after { transition: background-color .25s, border-color .25s, color .15s; }
+/* But NOT transform/opacity (would break animations) */
+.stagger-in > *, .loader-ring, .buy-card, .stock-card { transition: background-color .25s, border-color .25s; }
 
 /* ─── RESET ───────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -123,7 +150,7 @@ body {
   display:flex; align-items:center; gap:0;
   padding:0 28px;
   height:64px;
-  background:rgba(11,12,26,.95);
+  background:var(--header-bg);
   backdrop-filter:blur(24px) saturate(160%);
   border-bottom:1px solid var(--border);
   animation:fadeInUp .4s ease;
@@ -163,7 +190,9 @@ body {
   padding:0 14px; height:64px;
   font-size:.82rem; font-weight:500; color:var(--text-secondary);
   text-decoration:none; white-space:nowrap;
-  border-bottom:2px solid transparent;
+  /* button reset */
+  background:none; border:none; border-bottom:2px solid transparent;
+  outline:none; font-family:var(--font-body);
   transition:color .2s, border-color .2s, background .2s;
   position:relative; cursor:pointer;
 }
@@ -200,7 +229,27 @@ body {
   background:var(--text-secondary); border-radius:2px; transition:all .3s;
 }
 
-/* Legacy class aliases (backward compat with app.js) */
+/* ─── THEME TOGGLE ───────────────────────────────────────────────────────────── */
+.theme-toggle {
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:20px; padding:6px 12px;
+  cursor:pointer; font-family:var(--font-body);
+  font-size:.75rem; font-weight:600; color:var(--text-secondary);
+  transition:all .2s; white-space:nowrap; flex-shrink:0;
+}
+.theme-toggle:hover { border-color:var(--primary); color:var(--primary); }
+.theme-toggle svg { transition:transform .4s; }
+.theme-toggle:hover svg { transform:rotate(20deg); }
+
+/* Show correct icon per theme */
+[data-theme="dark"]  .theme-icon-light { display:none; }
+[data-theme="dark"]  .theme-icon-dark  { display:flex; }
+[data-theme="light"] .theme-icon-dark  { display:none; }
+[data-theme="light"] .theme-icon-light { display:flex; }
+.theme-icon { align-items:center; }
+
+/* ─── Legacy class aliases (backward compat with app.js) ─────────────────────── */
 .logo { display:flex; align-items:center; gap:10px; cursor:pointer; }
 .ai-badge {
   font-family:var(--font-body); font-size:.52rem; padding:2px 7px; margin-left:4px;

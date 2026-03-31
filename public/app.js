@@ -173,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('particleCanvas');
   if (canvas) new ParticleSystem(canvas);
 
+  initTheme();
   updateTime();
   setInterval(updateTime, 1000);
   checkMarketStatus();
@@ -185,6 +186,26 @@ document.addEventListener('DOMContentLoaded', () => {
   updateWatchlistCount();
   startAlertChecker();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// THEME (LIGHT / DARK)
+// ═══════════════════════════════════════════════════════════════════════════════
+function initTheme() {
+  const saved = localStorage.getItem('gm_theme') || 'dark';
+  applyTheme(saved, false);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark', true);
+}
+
+function applyTheme(theme, save) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const label = document.getElementById('themeLabel');
+  if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
+  if (save) localStorage.setItem('gm_theme', theme);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TIME & MARKET STATUS
@@ -370,6 +391,8 @@ async function loadStock(symbol) {
     renderStockView(data);
     document.getElementById('landingView').classList.add('hidden');
     document.getElementById('stockView').classList.remove('hidden');
+    // Clear active nav — we're in stock detail, no nav item is "active"
+    document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     console.error('loadStock failed:', err);
@@ -395,35 +418,45 @@ function setActiveNav(id) {
 
 // ── Top-level Nav Click (header navbar) ──────────────────────────────────────
 function navClick(target) {
+  // Always show landing view, destroy chart if open
+  document.getElementById('stockView')?.classList.add('hidden');
+  document.getElementById('landingView')?.classList.remove('hidden');
+  if (currentChart) { currentChart.destroy(); currentChart = null; }
+
+  // Close mobile nav drawer if open
+  document.getElementById('headerNav')?.classList.remove('mobile-open');
+
   switch (target) {
     case 'dashboard':
       setActiveNav('dashboard');
-      showLanding();
+      showTab('stocks');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
     case 'markets':
       setActiveNav('markets');
-      showLanding();
       showTab('stocks');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
     case 'sectors':
       setActiveNav('sectors');
-      showLanding();
       showTab('sectors');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
     case 'aipicks':
       setActiveNav('aipicks');
-      showLanding();
+      showTab('stocks');   // reset tab to stocks so landing shows properly
       setTimeout(() => {
         document.getElementById('aiPicksSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 80);
       break;
     case 'watchlist':
       setActiveNav('watchlist');
-      showLanding();
       showTab('watchlist');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
     default:
-      showLanding();
+      setActiveNav('dashboard');
+      showTab('stocks');
   }
 }
 
