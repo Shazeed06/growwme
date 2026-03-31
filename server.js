@@ -634,6 +634,9 @@ function generateAISummary({ quote, analysis, patterns, weeklySignal }) {
   return parts.join(' ');
 }
 
+// ── Buy Today Cache ───────────────────────────────────────────────────────────
+let buyTodayCache = { data: null, ts: 0 };
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/api/stock/:symbol', async (req, res) => {
   try {
@@ -722,6 +725,66 @@ app.get('/api/sectors', async (req, res) => {
   } catch (err) {
     console.error('Sectors error:', err.message);
     res.status(500).json({ error: 'Failed to fetch sector data' });
+  }
+});
+
+app.get('/api/buy-today', async (req, res) => {
+  try {
+    const now = Date.now();
+    // Serve cached result if fresh (30 min)
+    if (buyTodayCache.data && now - buyTodayCache.ts < 30 * 60 * 1000) {
+      return res.json(buyTodayCache.data);
+    }
+
+    // Analyse all popular stocks in small batches to find BUY signals
+    const candidates = [];
+    const BATCH = 3, DELAY = 150;
+    for (let i = 0; i < POPULAR_STOCKS.length; i += BATCH) {
+      const batch = POPULAR_STOCKS.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map(async (symbol) => {
+          const { quote, history } = await fetchChartData(symbol, '3mo', '1d');
+          if (history.length < 26) return null;
+          const analysis = analyzeStock(history);
+          if (!analysis.signal.includes('BUY')) return null;
+          const patterns = detectCandlestickPatterns(history);
+          return { ...quote, analysis, patterns };
+        })
+      );
+      results.forEach(r => { if (r.status === 'fulfilled' && r.value) candidates.push(r.value); });
+      if (i + BATCH < POPULAR_STOCKS.length) await new Promise(r => setTimeout(r, DELAY));
+    }
+
+    // Take top 5 by signal strength
+    const top = candidates
+      .sort((a, b) => b.analysis.strength - a.analysis.strength)
+      .slice(0, 5);
+
+    // Enrich with news sentiment
+    const withNews = await Promise.allSettled(
+      top.map(async (stock) => {
+        try {
+          const newsItems = await fetchStockNews(stock.symbol, stock.name);
+          const pos = newsItems.filter(n => n.sentiment === 'positive').length;
+          const neg = newsItems.filter(n => n.sentiment === 'negative').length;
+          return {
+            ...stock,
+            news: newsItems.slice(0, 2),
+            newsSentiment: pos > neg ? 'positive' : neg > pos ? 'negative' : 'neutral',
+            newsScore: pos - neg,
+          };
+        } catch {
+          return { ...stock, news: [], newsSentiment: 'neutral', newsScore: 0 };
+        }
+      })
+    );
+
+    const result = withNews.filter(r => r.status === 'fulfilled').map(r => r.value);
+    buyTodayCache = { data: result, ts: now };
+    res.json(result);
+  } catch (err) {
+    console.error('Buy today error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

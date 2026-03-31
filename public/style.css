@@ -929,6 +929,139 @@ body {
 .positive { color:var(--green); }
 .negative { color:var(--red);   }
 
+/* ─── BUY TODAY SECTION ──────────────────────────────────────────────────────── */
+.buy-today-section {
+  margin-bottom:32px;
+  background:linear-gradient(135deg,rgba(83,103,255,.08),rgba(151,71,255,.05));
+  border:1px solid rgba(83,103,255,.25);
+  border-radius:18px; padding:24px;
+}
+.buy-today-header {
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;flex-wrap:wrap;gap:10px;
+}
+.buy-today-title {
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--font-body);font-size:1rem;font-weight:700;
+  color:var(--text-primary);letter-spacing:.02em;
+}
+.buy-today-badge {
+  background:var(--gradient-buy);color:#fff;
+  padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;
+  letter-spacing:.06em;
+}
+.buy-today-refresh {
+  font-size:.75rem;color:var(--text-muted);
+}
+.buy-today-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:14px;
+}
+.buy-card {
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:14px;padding:18px;
+  transition:transform .2s,border-color .2s,box-shadow .2s;
+  border-left:3px solid var(--green);
+  cursor:pointer;
+}
+.buy-card:hover {
+  transform:translateY(-3px);
+  border-color:var(--green);
+  box-shadow:0 8px 32px rgba(68,194,127,.12);
+}
+.buy-card-top {
+  display:flex;align-items:flex-start;
+  justify-content:space-between;margin-bottom:12px;gap:8px;
+}
+.buy-card-name {
+  font-weight:700;font-size:.95rem;color:var(--text-primary);
+  line-height:1.3;
+}
+.buy-card-symbol {
+  font-size:.72rem;color:var(--text-muted);font-weight:500;
+  margin-top:2px;letter-spacing:.04em;
+}
+.buy-card-signal {
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 12px;border-radius:20px;font-size:.7rem;
+  font-weight:700;letter-spacing:.06em;white-space:nowrap;
+  background:var(--green-bg);color:var(--green);
+  border:1px solid rgba(68,194,127,.3);
+}
+.buy-card-signal.strong { background:var(--gradient-buy);color:#fff;border:none; }
+.buy-card-price {
+  font-size:1.3rem;font-weight:700;color:var(--text-primary);
+  font-variant-numeric:tabular-nums;margin-bottom:2px;
+}
+.buy-card-change.positive { color:var(--green);font-size:.83rem;font-weight:500; }
+.buy-card-change.negative { color:var(--red);  font-size:.83rem;font-weight:500; }
+.buy-card-reasons {
+  margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--border);
+}
+.buy-card-reason-item {
+  display:flex;align-items:flex-start;gap:6px;
+  font-size:.78rem;color:var(--text-secondary);
+  line-height:1.4;margin-bottom:5px;
+}
+.buy-card-reason-item:last-child { margin-bottom:0; }
+.buy-card-reason-dot {
+  width:5px;height:5px;border-radius:50%;
+  background:var(--green);margin-top:5px;flex-shrink:0;
+}
+.buy-card-news {
+  margin-top:10px;padding:8px 10px;
+  background:var(--bg-secondary);border-radius:8px;
+  font-size:.75rem;line-height:1.4;
+}
+.buy-card-news-label {
+  font-weight:600;margin-bottom:3px;
+  display:flex;align-items:center;gap:5px;
+}
+.buy-card-news-label.positive { color:var(--green); }
+.buy-card-news-label.negative { color:var(--red); }
+.buy-card-news-label.neutral  { color:var(--orange); }
+.buy-card-news-title { color:var(--text-muted);font-size:.73rem; }
+.buy-card-footer {
+  margin-top:14px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.buy-card-strength {
+  font-size:.75rem;color:var(--text-muted);
+}
+.buy-card-strength span {
+  color:var(--green);font-weight:700;
+}
+.buy-card-analyse-btn {
+  background:var(--green-bg);color:var(--green);
+  border:1px solid rgba(68,194,127,.3);
+  padding:5px 14px;border-radius:8px;font-size:.75rem;font-weight:600;
+  cursor:pointer;font-family:var(--font-body);
+  transition:background .2s,box-shadow .2s;
+}
+.buy-card-analyse-btn:hover {
+  background:var(--green);color:#fff;
+  box-shadow:0 4px 12px rgba(68,194,127,.3);
+}
+.buy-today-skeleton {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:14px;
+}
+.buy-today-empty {
+  text-align:center;padding:32px;color:var(--text-muted);
+  font-size:.9rem;
+}
+/* Pattern chip in buy card */
+.buy-card-pattern {
+  display:inline-flex;align-items:center;gap:4px;
+  margin-top:8px;padding:3px 9px;border-radius:20px;
+  font-size:.7rem;font-weight:600;
+  background:rgba(83,103,255,.1);color:var(--primary);
+  border:1px solid rgba(83,103,255,.2);
+}
+
 /* ─── RESPONSIVE: 1100px ──────────────────────────────────────────────────────── */
 @media (max-width:1100px) {
   .investor-grid { grid-template-columns:1fr; }
@@ -963,6 +1096,7 @@ body {
   .metrics-bar { gap:8px; }
   .metric-chip { min-width:calc(50% - 4px); }
   .news-grid { grid-template-columns:1fr; }
+  .buy-today-grid{grid-template-columns:1fr}
   .news-sentiment-summary { gap:10px; }
   .news-recommendation { margin-left:0; }
   .hero-title { font-size:1.8rem; }

@@ -76,6 +76,22 @@
         <p class="hero-sub">AI-powered technical analysis · Warren Buffett &amp; Jhunjhunwala intelligence · Candlestick patterns · Buy / Sell signals</p>
       </div>
 
+      <!-- Stocks to Buy Today -->
+      <div class="buy-today-section">
+        <div class="buy-today-header">
+          <div class="buy-today-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            STOCKS TO BUY TODAY
+            <span class="buy-today-badge">AI PICKS</span>
+          </div>
+          <div class="buy-today-refresh">
+            Based on technical signals &amp; news · Refreshes every 30 min
+            <strong id="buyTodayCount" style="color:var(--green);margin-left:6px"></strong>
+          </div>
+        </div>
+        <div id="buyTodayGrid"></div>
+      </div>
+
       <!-- Landing Nav Tabs -->
       <div class="landing-tabs">
         <button class="landing-tab active" id="tab-stocks" onclick="showTab('stocks')">

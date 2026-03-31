@@ -179,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(checkMarketStatus, 60_000);
   loadIndices();
   loadPopularStocks();
+  loadBuyToday();
   setupSearch();
   setupKeyboardShortcuts();
   updateWatchlistCount();
@@ -394,6 +395,88 @@ function showTab(tab) {
   });
   if (tab === 'sectors' && !sectorsLoaded) { sectorsLoaded = true; loadSectors(); }
   if (tab === 'watchlist') renderWatchlistPanel();
+}
+
+// ── Stocks to Buy Today ───────────────────────────────────────────────────────
+async function loadBuyToday() {
+  const el = document.getElementById('buyTodayGrid');
+  if (!el) return;
+
+  // Skeleton
+  el.innerHTML = `<div class="buy-today-skeleton">
+    ${Array(3).fill(`<div class="buy-card" style="opacity:.35;pointer-events:none">
+      <div class="loading-pulse" style="width:140px;height:16px;background:var(--border);border-radius:4px;margin-bottom:6px"></div>
+      <div class="loading-pulse" style="width:80px;height:12px;background:var(--border);border-radius:4px;margin-bottom:12px"></div>
+      <div class="loading-pulse" style="width:100px;height:24px;background:var(--border);border-radius:4px;margin-bottom:14px"></div>
+      <div class="loading-pulse" style="width:100%;height:12px;background:var(--border);border-radius:4px;margin-bottom:5px"></div>
+      <div class="loading-pulse" style="width:90%;height:12px;background:var(--border);border-radius:4px"></div>
+    </div>`).join('')}
+  </div>`;
+
+  try {
+    const res  = await fetchWithTimeout('/api/buy-today', 90_000);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderBuyToday(data);
+  } catch (err) {
+    el.innerHTML = `<div class="buy-today-empty">📡 Could not load today's picks — market data loading…</div>`;
+  }
+}
+
+function renderBuyToday(stocks) {
+  const el = document.getElementById('buyTodayGrid');
+  if (!el) return;
+
+  const countEl = document.getElementById('buyTodayCount');
+  if (countEl) countEl.textContent = `${stocks.length} stock${stocks.length !== 1 ? 's' : ''}`;
+
+  if (stocks.length === 0) {
+    el.innerHTML = '<div class="buy-today-empty">No strong buy signals in Nifty 50 right now. Check back later.</div>';
+    return;
+  }
+
+  const SENT_ICON = { positive: '🟢', negative: '🔴', neutral: '🟡' };
+  const SENT_TEXT = { positive: 'Positive News', negative: 'Negative News', neutral: 'Neutral News' };
+
+  el.innerHTML = `<div class="buy-today-grid">
+    ${stocks.map(s => {
+      const pos = (s.changePercent || 0) >= 0;
+      const isStrong = s.analysis.signal === 'STRONG BUY';
+      const topReasons = s.analysis.reasons.slice(0, 3);
+      const topPattern = s.patterns?.find(p => p.type === 'bullish');
+      const newsItem   = s.news?.[0];
+
+      return `<div class="buy-card" onclick="loadStock('${s.symbol}')">
+        <div class="buy-card-top">
+          <div>
+            <div class="buy-card-name">${s.name?.split(' ').slice(0, 3).join(' ') || cleanSymbol(s.symbol)}</div>
+            <div class="buy-card-symbol">${cleanSymbol(s.symbol)} · NSE</div>
+          </div>
+          <div class="buy-card-signal ${isStrong ? 'strong' : ''}">
+            ${isStrong ? '⚡ STRONG BUY' : '↑ BUY'}
+          </div>
+        </div>
+        <div class="buy-card-price">₹${formatNumber(s.price)}</div>
+        <div class="buy-card-change ${pos ? 'positive' : 'negative'}">
+          ${pos ? '▲ +' : '▼ '}${Math.abs(s.changePercent || 0).toFixed(2)}% today
+        </div>
+        ${topPattern ? `<div class="buy-card-pattern">🕯️ ${topPattern.name} pattern detected</div>` : ''}
+        <div class="buy-card-reasons">
+          ${topReasons.map(r => `<div class="buy-card-reason-item"><div class="buy-card-reason-dot"></div>${r}</div>`).join('')}
+        </div>
+        ${newsItem ? `<div class="buy-card-news">
+          <div class="buy-card-news-label ${s.newsSentiment}">
+            ${SENT_ICON[s.newsSentiment]} ${SENT_TEXT[s.newsSentiment]}
+          </div>
+          <div class="buy-card-news-title">${newsItem.title.slice(0, 80)}…</div>
+        </div>` : ''}
+        <div class="buy-card-footer">
+          <div class="buy-card-strength">Signal: <span>${s.analysis.strength}%</span> · Target ₹${formatNumber(s.analysis.targets.target1)}</div>
+          <button class="buy-card-analyse-btn" onclick="event.stopPropagation();loadStock('${s.symbol}')">Full Analysis →</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 // ── Sector Heatmap ────────────────────────────────────────────────────────────
@@ -853,33 +936,221 @@ function renderFibonacci(data) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHART
 // ═══════════════════════════════════════════════════════════════════════════════
+let _candleResizeObs = null;
+let _candleData      = null;
+
 function renderChart(data, type) {
-  const ctx = document.getElementById('priceChart').getContext('2d');
-  if (currentChart) currentChart.destroy();
+  const canvas = document.getElementById('priceChart');
+
+  // Always destroy Chart.js instance + candlestick listeners
+  if (currentChart) { currentChart.destroy(); currentChart = null; }
+  if (_candleResizeObs) { _candleResizeObs.disconnect(); _candleResizeObs = null; }
+  canvas.onmousemove = null;
+  canvas.onmouseleave = null;
 
   const { chartData } = data;
-  const labels = chartData.map(d =>
-    new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }));
-  const closes = chartData.map(d => d.close);
+  _candleData = chartData;
 
   if (type === 'line') {
+    const ctx = canvas.getContext('2d');
+    // Restore canvas natural sizing for Chart.js
+    canvas.removeAttribute('width');
+    canvas.removeAttribute('height');
+    canvas.style.width  = '';
+    canvas.style.height = '';
+
+    const labels = chartData.map(d =>
+      new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }));
+    const closes = chartData.map(d => d.close);
+
     const grad = ctx.createLinearGradient(0, 0, 0, 360);
     grad.addColorStop(0,   'rgba(83,103,255,.25)');
     grad.addColorStop(0.5, 'rgba(83,103,255,.06)');
     grad.addColorStop(1,   'rgba(83,103,255,0)');
+
     currentChart = new Chart(ctx, {
       type: 'line',
       data: { labels, datasets: [{ label: 'Price', data: closes, borderColor: '#5367FF', borderWidth: 2.5, backgroundColor: grad, fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 7, pointHoverBackgroundColor: '#5367FF', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
       options: chartOptions(),
     });
   } else {
-    const colors = chartData.map(d => d.close >= d.open ? '#00e676' : '#ff5252');
-    currentChart = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets: [{ label: 'OHLC', data: chartData.map(d => Math.abs(d.close - d.open) || 0.5), backgroundColor: colors.map(c => c + '66'), borderColor: colors, borderWidth: 1.5, borderRadius: 2, base: chartData.map(d => Math.min(d.open, d.close)) }] },
-      options: { ...chartOptions(), plugins: { ...chartOptions().plugins, tooltip: { ...chartOptions().plugins.tooltip, callbacks: { label: (ctx) => { const d = chartData[ctx.dataIndex]; return [`O: ₹${d.open?.toFixed(2)}`, `H: ₹${d.high?.toFixed(2)}`, `L: ₹${d.low?.toFixed(2)}`, `C: ₹${d.close?.toFixed(2)}`]; } } } } },
-    });
+    // ── Real candlestick chart (custom canvas) ──────────────────────────
+    const draw = () => drawCandlestickCanvas(canvas, chartData);
+    draw();
+    _candleResizeObs = new ResizeObserver(draw);
+    _candleResizeObs.observe(canvas.parentElement);
+    setupCandleHover(canvas, chartData);
   }
+}
+
+// ── Custom candlestick renderer ───────────────────────────────────────────────
+const PAD = { top: 18, right: 72, bottom: 38, left: 8 };
+
+function drawCandlestickCanvas(canvas, data) {
+  const wrapper = canvas.parentElement;
+  const W = wrapper.clientWidth  || 600;
+  const H = wrapper.clientHeight || 360;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top  - PAD.bottom;
+  const step = cW / data.length;
+
+  // Price range
+  const allHighs = data.map(d => d.high).filter(Boolean);
+  const allLows  = data.map(d => d.low).filter(Boolean);
+  const yMax = Math.max(...allHighs) * 1.005;
+  const yMin = Math.min(...allLows)  * 0.995;
+  const yRange = yMax - yMin || 1;
+
+  const toY = p => PAD.top + (1 - (p - yMin) / yRange) * cH;
+  const toX = i => PAD.left + (i + 0.5) * step;
+
+  // Background
+  ctx.fillStyle = '#0F1120';
+  ctx.fillRect(0, 0, W, H);
+
+  // Horizontal grid + price axis
+  const GRID = 6;
+  for (let i = 0; i <= GRID; i++) {
+    const y = PAD.top + (i / GRID) * cH;
+    const price = yMax - (i / GRID) * yRange;
+    ctx.strokeStyle = 'rgba(37,39,66,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
+    ctx.fillStyle = '#6B6D8A';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('₹' + price.toLocaleString('en-IN', { maximumFractionDigits: 0 }), W - PAD.right + 5, y + 4);
+  }
+
+  // Candles
+  const candleW = Math.max(Math.floor(step * 0.6), 2);
+  data.forEach((d, i) => {
+    if (!d.open || !d.close || !d.high || !d.low) return;
+    const x  = toX(i);
+    const bull = d.close >= d.open;
+    const G = '#44C27F', R = '#E65B4E';
+    const col = bull ? G : R;
+
+    const bodyTop = toY(Math.max(d.open, d.close));
+    const bodyBot = toY(Math.min(d.open, d.close));
+    const bodyH   = Math.max(bodyBot - bodyTop, 1);
+
+    // Upper wick
+    ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, toY(d.high)); ctx.lineTo(x, bodyTop); ctx.stroke();
+    // Lower wick
+    ctx.beginPath(); ctx.moveTo(x, bodyBot); ctx.lineTo(x, toY(d.low)); ctx.stroke();
+
+    // Body
+    if (bull) {
+      ctx.fillStyle = G;
+      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+    } else {
+      ctx.fillStyle   = R + 'bb';
+      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+      ctx.strokeStyle = R; ctx.lineWidth = 1;
+      ctx.strokeRect(x - candleW / 2, bodyTop, candleW, bodyH);
+    }
+  });
+
+  // X-axis date labels
+  const labelEvery = Math.max(Math.ceil(data.length / 8), 1);
+  data.forEach((d, i) => {
+    if (i % labelEvery !== 0) return;
+    const label = new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    ctx.fillStyle = '#6B6D8A';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, toX(i), H - 8);
+  });
+}
+
+function setupCandleHover(canvas, data) {
+  const step  = () => (canvas.clientWidth - PAD.left - PAD.right) / data.length;
+  const toX   = i => PAD.left + (i + 0.5) * step();
+  const allH  = data.map(d => d.high).filter(Boolean);
+  const allL  = data.map(d => d.low).filter(Boolean);
+  const yMax  = Math.max(...allH) * 1.005;
+  const yMin  = Math.min(...allL) * 0.995;
+  const yRng  = yMax - yMin || 1;
+  const cHt   = () => canvas.clientHeight - PAD.top - PAD.bottom;
+  const toY   = p => PAD.top + (1 - (p - yMin) / yRng) * cHt();
+
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    const i    = Math.floor((mx - PAD.left) / step());
+    if (i < 0 || i >= data.length) return;
+    const d = data[i];
+    if (!d?.open) return;
+
+    drawCandlestickCanvas(canvas, data); // redraw base
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.scale(dpr, dpr);
+    const x = toX(i);
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+
+    // Crosshair
+    ctx.strokeStyle = 'rgba(83,103,255,0.45)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, H - PAD.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Tooltip
+    const bull  = d.close >= d.open;
+    const lines = [
+      new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      `O: ₹${d.open?.toFixed(2)}`,
+      `H: ₹${d.high?.toFixed(2)}`,
+      `L: ₹${d.low?.toFixed(2)}`,
+      `C: ₹${d.close?.toFixed(2)}`,
+    ];
+    const TW = 148, TH = lines.length * 19 + 14;
+    let tx = x + 12;
+    if (tx + TW > W - PAD.right) tx = x - TW - 12;
+    const ty = PAD.top + 8;
+
+    // Tooltip bg
+    ctx.beginPath();
+    const r = 8;
+    ctx.moveTo(tx + r, ty); ctx.lineTo(tx + TW - r, ty);
+    ctx.quadraticCurveTo(tx + TW, ty, tx + TW, ty + r);
+    ctx.lineTo(tx + TW, ty + TH - r);
+    ctx.quadraticCurveTo(tx + TW, ty + TH, tx + TW - r, ty + TH);
+    ctx.lineTo(tx + r, ty + TH);
+    ctx.quadraticCurveTo(tx, ty + TH, tx, ty + TH - r);
+    ctx.lineTo(tx, ty + r);
+    ctx.quadraticCurveTo(tx, ty, tx + r, ty);
+    ctx.closePath();
+    ctx.fillStyle   = 'rgba(15,17,35,0.96)';
+    ctx.strokeStyle = bull ? '#44C27F' : '#E65B4E';
+    ctx.lineWidth   = 1;
+    ctx.fill(); ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.font = '10px Inter, sans-serif';
+    lines.forEach((line, idx) => {
+      ctx.fillStyle = idx === 0 ? '#A0A3BD'
+        : idx === lines.length - 1 ? (bull ? '#44C27F' : '#E65B4E')
+        : '#E8EAF6';
+      ctx.fillText(line, tx + 10, ty + 16 + idx * 19);
+    });
+  };
+
+  canvas.onmouseleave = () => drawCandlestickCanvas(canvas, data);
 }
 
 function chartOptions() {
