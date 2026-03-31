@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"import\\(''yahoo-finance2''\\).then\\(m => console.log\\(Object.keys\\(m\\), Object.keys\\(m.default || {}\\)\\)\\)\")",
+      "Bash(node -e \"import\\(''yahoo-finance2''\\).then\\(m => { const yf = m.default; console.log\\(typeof yf, Object.keys\\(yf\\)\\); }\\)\")",
+      "Bash(node -e \"import\\(''yahoo-finance2''\\).then\\(m => { const YF = m.default; const yf = new YF\\(\\); console.log\\(Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(yf\\)\\).join\\('', ''\\)\\); }\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(npm uninstall:*)",
+      "Bash(curl -s http://localhost:3000/api/indices)",
+      "Bash(curl -s http://localhost:3000/api/popular)",
+      "Bash(git -C /c/Stock_analyser init)",
+      "Bash(git -C /c/Stock_analyser add -A)",
+      "Bash(git -C /c/Stock_analyser diff --cached)",
+      "Bash(git -C /c/Stock_analyser diff --cached -- server.js public/index.html public/style.css public/app.js)",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(curl -s \"http://localhost:3000/api/news/RELIANCE?name=Reliance+Industries\")",
+      "Bash(npx kill-port:*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3000)"
+    ]
+  }
+}
